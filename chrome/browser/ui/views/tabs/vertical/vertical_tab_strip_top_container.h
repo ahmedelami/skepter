@@ -12,6 +12,8 @@ namespace gfx {
 class Point;
 }  // namespace gfx
 
+class Browser;
+
 namespace tabs {
 class VerticalTabStripStateController;
 }  // namespace tabs
@@ -30,7 +32,8 @@ class VerticalTabStripTopContainer : public views::View,
  public:
   VerticalTabStripTopContainer(
       tabs::VerticalTabStripStateController* state_controller,
-      actions::ActionItem* root_action_item);
+      actions::ActionItem* root_action_item,
+      Browser* browser);
   ~VerticalTabStripTopContainer() override;
 
   // LayoutDelegate:
@@ -56,8 +59,12 @@ class VerticalTabStripTopContainer : public views::View,
  private:
   raw_ptr<tabs::VerticalTabStripStateController> state_controller_ = nullptr;
   raw_ptr<actions::ActionItem> root_action_item_ = nullptr;
+  raw_ptr<Browser> browser_ = nullptr;
   raw_ptr<views::LabelButton> tab_search_button_ = nullptr;
   raw_ptr<views::LabelButton> collapse_button_ = nullptr;
+  raw_ptr<views::LabelButton> back_button_ = nullptr;
+  raw_ptr<views::LabelButton> forward_button_ = nullptr;
+  raw_ptr<views::LabelButton> reload_button_ = nullptr;
 
   std::unique_ptr<views::ActionViewController> action_view_controller_;
 

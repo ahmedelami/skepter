@@ -5,13 +5,22 @@
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_top_container.h"
 
 #include "build/build_config.h"
+#include "base/functional/bind.h"
+#include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/tabs/vertical/top_container_button.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/vector_icons/vector_icons.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/window_open_disposition_utils.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/models/image_model.h"
 #include "ui/views/actions/action_view_controller.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/layout/delegating_layout_manager.h"
@@ -21,9 +30,11 @@
 
 VerticalTabStripTopContainer::VerticalTabStripTopContainer(
     tabs::VerticalTabStripStateController* state_controller,
-    actions::ActionItem* root_action_item)
+    actions::ActionItem* root_action_item,
+    Browser* browser)
     : state_controller_(state_controller),
       root_action_item_(root_action_item),
+      browser_(browser),
       action_view_controller_(std::make_unique<views::ActionViewController>()) {
   SetProperty(views::kElementIdentifierKey,
               kVerticalTabStripTopContainerElementId);
@@ -38,6 +49,43 @@ VerticalTabStripTopContainer::VerticalTabStripTopContainer(
   collapse_button_ = AddChildButtonFor(kActionToggleCollapseVertical);
   collapse_button_->SetProperty(views::kElementIdentifierKey,
                                 kVerticalTabStripCollapseButtonElementId);
+
+#if BUILDFLAG(IS_MAC)
+  if (browser_) {
+    const auto callback = [](Browser* browser, int command,
+                             const ui::Event& event) {
+      chrome::ExecuteCommandWithDisposition(
+          browser, command, ui::DispositionFromEventFlags(event.flags()));
+    };
+
+    auto back_button = std::make_unique<TopContainerButton>();
+    back_button->SetCallback(
+        base::BindRepeating(callback, browser_, IDC_BACK));
+    back_button->SetTooltipText(
+        l10n_util::GetStringUTF16(IDS_TOOLTIP_BACK));
+    back_button->UpdateIcon(ui::ImageModel::FromVectorIcon(
+        vector_icons::kBackArrowChromeRefreshIcon));
+    back_button_ = AddChildView(std::move(back_button));
+
+    auto forward_button = std::make_unique<TopContainerButton>();
+    forward_button->SetCallback(
+        base::BindRepeating(callback, browser_, IDC_FORWARD));
+    forward_button->SetTooltipText(
+        l10n_util::GetStringUTF16(IDS_TOOLTIP_FORWARD));
+    forward_button->UpdateIcon(ui::ImageModel::FromVectorIcon(
+        vector_icons::kForwardArrowChromeRefreshIcon));
+    forward_button_ = AddChildView(std::move(forward_button));
+
+    auto reload_button = std::make_unique<TopContainerButton>();
+    reload_button->SetCallback(
+        base::BindRepeating(callback, browser_, IDC_RELOAD));
+    reload_button->SetTooltipText(
+        l10n_util::GetStringUTF16(IDS_TOOLTIP_RELOAD));
+    reload_button->UpdateIcon(ui::ImageModel::FromVectorIcon(
+        vector_icons::kReloadChromeRefreshIcon));
+    reload_button_ = AddChildView(std::move(reload_button));
+  }
+#endif
 }
 
 VerticalTabStripTopContainer::~VerticalTabStripTopContainer() = default;
@@ -51,6 +99,76 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
                 toolbar_height_);
 
   std::vector<views::LabelButton*> container_buttons;
+
+#if BUILDFLAG(IS_MAC)
+  if (collapse_button_ && collapse_button_->GetVisible()) {
+    container_buttons.push_back(collapse_button_);
+  }
+  if (back_button_ && back_button_->GetVisible()) {
+    container_buttons.push_back(back_button_);
+  }
+  if (forward_button_ && forward_button_->GetVisible()) {
+    container_buttons.push_back(forward_button_);
+  }
+  if (reload_button_ && reload_button_->GetVisible()) {
+    container_buttons.push_back(reload_button_);
+  }
+
+  const int padding =
+      GetLayoutConstant(LayoutConstant::kVerticalTabStripTopButtonPadding);
+
+  if (state_controller_->IsCollapsed()) {
+    // If the vertical tab strip is collapsed, then lay out the buttons
+    // vertically in reverse order from top-to-bottom.
+    int total_height = exclusion_width_ == 0 ? 0 : toolbar_height_;
+    for (views::LabelButton* container_button : container_buttons) {
+      total_height += container_button->GetPreferredSize().height();
+    }
+    if (container_buttons.size() >= 2) {
+      total_height += (container_buttons.size() - 1) * padding;
+    }
+
+    if (total_height > host_size.height()) {
+      host_size.set_height(total_height);
+    }
+
+    int current_y = 0;
+
+    for (views::LabelButton* container_button :
+         base::Reversed(container_buttons)) {
+      const gfx::Size pref_size = container_button->GetPreferredSize();
+      gfx::Rect bounds(std::max(0, (host_size.width() - pref_size.width()) / 2),
+                       current_y, pref_size.width(), pref_size.height());
+      layout.child_layouts.emplace_back(container_button,
+                                        container_button->GetVisible(), bounds);
+
+      host_size.SetToMax(gfx::Size(bounds.right(), 0));
+
+      current_y += pref_size.height() + padding;
+    }
+  } else {
+    // Lay out the buttons left-to-right, avoiding the exclusion zone (traffic
+    // lights, etc) on the leading edge.
+    int current_x =
+        exclusion_width_ > 0 ? (exclusion_width_ + padding) : padding;
+
+    for (views::LabelButton* container_button : container_buttons) {
+      const gfx::Size pref_size = container_button->GetPreferredSize();
+      gfx::Rect bounds(
+          current_x,
+          std::max(0, (host_size.height() - pref_size.height()) / 2),
+          pref_size.width(), pref_size.height());
+      layout.child_layouts.emplace_back(container_button,
+                                        container_button->GetVisible(), bounds);
+
+      host_size.SetToMax(gfx::Size(bounds.right(), bounds.bottom()));
+      current_x += pref_size.width() + padding;
+    }
+  }
+
+  layout.host_size = host_size;
+  return layout;
+#else  // BUILDFLAG(IS_MAC)
 
   if (tab_search_button_ && tab_search_button_->GetVisible()) {
     container_buttons.push_back(tab_search_button_);
@@ -174,6 +292,7 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
   layout.host_size = host_size;
 
   return layout;
+#endif  // BUILDFLAG(IS_MAC)
 }
 
 views::LabelButton* VerticalTabStripTopContainer::AddChildButtonFor(
@@ -206,6 +325,23 @@ bool VerticalTabStripTopContainer::IsPositionInWindowCaption(
       IsHitInView(collapse_button_, point)) {
     return false;
   }
+
+#if BUILDFLAG(IS_MAC)
+  if (back_button_ && back_button_->GetVisible() &&
+      IsHitInView(back_button_, point)) {
+    return false;
+  }
+
+  if (forward_button_ && forward_button_->GetVisible() &&
+      IsHitInView(forward_button_, point)) {
+    return false;
+  }
+
+  if (reload_button_ && reload_button_->GetVisible() &&
+      IsHitInView(reload_button_, point)) {
+    return false;
+  }
+#endif
 
   return true;
 }

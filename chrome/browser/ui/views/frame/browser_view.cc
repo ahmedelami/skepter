@@ -392,21 +392,20 @@ using input::NativeWebKeyboardEvent;
 using web_modal::WebContentsModalDialogHost;
 
 #if BUILDFLAG(IS_MAC)
-class SkepterOmniboxPopupView;
+class SkepterOmniboxPopupDelegate;
 
 class SkepterOmniboxPopupController : public views::WidgetObserver {
  public:
-  explicit SkepterOmniboxPopupController(BrowserView* browser_view)
-      : browser_view_(browser_view) {}
+  explicit SkepterOmniboxPopupController(BrowserView* browser_view);
 
   SkepterOmniboxPopupController(const SkepterOmniboxPopupController&) = delete;
   SkepterOmniboxPopupController& operator=(const SkepterOmniboxPopupController&) =
       delete;
 
-  ~SkepterOmniboxPopupController() override { CloseAndRestoreNow(); }
+  ~SkepterOmniboxPopupController() override;
 
   bool Show();
-  void OnPopupViewClosing(SkepterOmniboxPopupView* popup_view);
+  void OnPopupDelegateClosing(SkepterOmniboxPopupDelegate* popup_delegate);
 
   // views::WidgetObserver:
   void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
@@ -421,59 +420,71 @@ class SkepterOmniboxPopupController : public views::WidgetObserver {
   const raw_ptr<BrowserView> browser_view_;
 
   std::unique_ptr<views::Widget> popup_widget_;
-  raw_ptr<SkepterOmniboxPopupView> popup_view_ = nullptr;
+  std::unique_ptr<SkepterOmniboxPopupDelegate> popup_delegate_;
   raw_ptr<views::View> placeholder_ = nullptr;
-  int placeholder_index_ = -1;
+  std::optional<size_t> placeholder_index_;
 
   base::WeakPtrFactory<SkepterOmniboxPopupController> weak_ptr_factory_{this};
 };
 
-class SkepterOmniboxPopupView : public views::WidgetDelegateView {
+class SkepterOmniboxPopupDelegate : public views::WidgetDelegate {
  public:
-  SkepterOmniboxPopupView(BrowserView* browser_view,
-                          SkepterOmniboxPopupController* controller,
-                          std::unique_ptr<views::View> location_bar_view)
-      : browser_view_(browser_view), controller_(controller) {
-    SetOwnedByWidget(true);
+  SkepterOmniboxPopupDelegate(SkepterOmniboxPopupController* controller,
+                             std::unique_ptr<views::View> location_bar_view)
+      : controller_(controller) {
+    SetCanResize(false);
+    SetCanMaximize(false);
+    SetCanMinimize(false);
+    SetShowTitle(false);
+    SetShowCloseButton(false);
 
+    auto contents = std::make_unique<views::View>();
+    contents_ = contents.get();
     auto* layout =
-        SetLayoutManager(std::make_unique<views::BoxLayout>(
+        contents->SetLayoutManager(std::make_unique<views::BoxLayout>(
             views::BoxLayout::Orientation::kVertical, gfx::Insets(8), 0));
     layout->set_cross_axis_alignment(
         views::BoxLayout::CrossAxisAlignment::kStretch);
 
-    location_bar_view_ = AddChildView(std::move(location_bar_view));
+    location_bar_view_ = contents->AddChildView(std::move(location_bar_view));
+    SetContentsView(std::move(contents));
   }
 
-  SkepterOmniboxPopupView(const SkepterOmniboxPopupView&) = delete;
-  SkepterOmniboxPopupView& operator=(const SkepterOmniboxPopupView&) = delete;
-  ~SkepterOmniboxPopupView() override = default;
-
-  bool CanResize() const override { return false; }
-  bool CanMaximize() const override { return false; }
-  bool CanMinimize() const override { return false; }
+  SkepterOmniboxPopupDelegate(const SkepterOmniboxPopupDelegate&) = delete;
+  SkepterOmniboxPopupDelegate& operator=(const SkepterOmniboxPopupDelegate&) =
+      delete;
+  ~SkepterOmniboxPopupDelegate() override = default;
 
   std::unique_ptr<views::View> TakeLocationBarView() {
-    if (!location_bar_view_) {
+    if (!location_bar_view_ || !contents_) {
       return nullptr;
     }
-    auto result = RemoveChildViewT(location_bar_view_);
+    auto result = contents_->RemoveChildViewT(location_bar_view_);
     location_bar_view_ = nullptr;
+    contents_ = nullptr;
     return result;
   }
 
   void WindowClosing() override {
-    views::WidgetDelegateView::WindowClosing();
     if (controller_) {
-      controller_->OnPopupViewClosing(this);
+      controller_->OnPopupDelegateClosing(this);
     }
+    views::WidgetDelegate::WindowClosing();
   }
 
  private:
-  raw_ptr<BrowserView> browser_view_;
   raw_ptr<SkepterOmniboxPopupController> controller_;
+  raw_ptr<views::View> contents_ = nullptr;
   raw_ptr<views::View> location_bar_view_ = nullptr;
 };
+
+SkepterOmniboxPopupController::~SkepterOmniboxPopupController() {
+  CloseAndRestoreNow();
+}
+
+SkepterOmniboxPopupController::SkepterOmniboxPopupController(
+    BrowserView* browser_view)
+    : browser_view_(browser_view) {}
 
 bool SkepterOmniboxPopupController::Show() {
   auto* const vertical_tab_strip_state_controller =
@@ -500,7 +511,7 @@ bool SkepterOmniboxPopupController::Show() {
 
   views::View* const toolbar_view = browser_view_->toolbar();
   placeholder_index_ = toolbar_view->GetIndexOf(location_bar);
-  if (placeholder_index_ < 0) {
+  if (!placeholder_index_.has_value()) {
     return false;
   }
 
@@ -521,12 +532,11 @@ bool SkepterOmniboxPopupController::Show() {
   if (margins) {
     placeholder->SetProperty(views::kMarginsKey, *margins);
   }
-  placeholder_ =
-      toolbar_view->AddChildViewAt(std::move(placeholder), placeholder_index_);
+  placeholder_ = toolbar_view->AddChildViewAt(std::move(placeholder),
+                                              placeholder_index_.value());
 
-  auto delegate = std::make_unique<SkepterOmniboxPopupView>(
-      browser_view_, this, std::move(location_bar_holder));
-  popup_view_ = delegate.get();
+  popup_delegate_ = std::make_unique<SkepterOmniboxPopupDelegate>(
+      this, std::move(location_bar_holder));
 
   const gfx::Rect bounds = CalculatePopupBounds();
 
@@ -539,7 +549,7 @@ bool SkepterOmniboxPopupController::Show() {
   params.context = browser_view_->GetWidget()->GetNativeWindow();
   params.SetParent(browser_view_->GetWidget()->GetNativeView());
   params.bounds = bounds;
-  params.delegate = delegate.release();
+  params.delegate = popup_delegate_.get();
 
   popup_widget_ = std::make_unique<views::Widget>();
   popup_widget_->Init(std::move(params));
@@ -552,9 +562,9 @@ bool SkepterOmniboxPopupController::Show() {
   return true;
 }
 
-void SkepterOmniboxPopupController::OnPopupViewClosing(
-    SkepterOmniboxPopupView* popup_view) {
-  if (popup_view != popup_view_) {
+void SkepterOmniboxPopupController::OnPopupDelegateClosing(
+    SkepterOmniboxPopupDelegate* popup_delegate) {
+  if (!popup_delegate_ || popup_delegate != popup_delegate_.get()) {
     return;
   }
   RestoreLocationBarFromPopup();
@@ -576,11 +586,11 @@ void SkepterOmniboxPopupController::CloseAndRestoreNow() {
   RestoreLocationBarFromPopup();
   popup_widget_->RemoveObserver(this);
   popup_widget_.reset();
-  popup_view_ = nullptr;
+  popup_delegate_.reset();
 }
 
 void SkepterOmniboxPopupController::RestoreLocationBarFromPopup() {
-  if (!popup_view_) {
+  if (!popup_delegate_) {
     return;
   }
 
@@ -590,8 +600,7 @@ void SkepterOmniboxPopupController::RestoreLocationBarFromPopup() {
   }
 
   std::unique_ptr<views::View> location_bar_holder =
-      popup_view_->TakeLocationBarView();
-  popup_view_ = nullptr;
+      popup_delegate_->TakeLocationBarView();
 
   if (!location_bar_holder) {
     return;
@@ -603,7 +612,7 @@ void SkepterOmniboxPopupController::RestoreLocationBarFromPopup() {
   }
 
   toolbar_view->AddChildViewAt(std::move(location_bar_holder),
-                               placeholder_index_);
+                               placeholder_index_.value_or(0));
   toolbar_view->InvalidateLayout();
   browser_view_->InvalidateLayout();
 }
@@ -624,6 +633,7 @@ void SkepterOmniboxPopupController::DestroyPopupWidget() {
   }
   popup_widget_->RemoveObserver(this);
   popup_widget_.reset();
+  popup_delegate_.reset();
 }
 
 gfx::Rect SkepterOmniboxPopupController::CalculatePopupBounds() const {
@@ -2568,10 +2578,13 @@ void BrowserView::UpdateToolbar(content::WebContents* contents) {
   if (toolbar_) {
     toolbar_->Update(contents);
   }
-    for (ContentsContainerView* contents_container :
-         multi_contents_view_->contents_container_views()) {
-      contents_container->mini_toolbar()->UpdateContents();
-    }
+  if (vertical_tab_strip_region_view_) {
+    vertical_tab_strip_region_view_->UpdateUrlRow(GetActiveWebContents());
+  }
+  for (ContentsContainerView* contents_container :
+       multi_contents_view_->contents_container_views()) {
+    contents_container->mini_toolbar()->UpdateContents();
+  }
 }
 
 bool BrowserView::UpdateToolbarSecurityState() {

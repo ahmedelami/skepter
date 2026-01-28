@@ -12,6 +12,8 @@
 #include "base/containers/adapters.h"
 #include "base/functional/bind.h"
 #include "base/notimplemented.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -26,10 +28,12 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
+#include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/tabs/vertical/root_tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/vertical/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_pinned_tab_container_view.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_drag_handler.h"
+#include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_flat_edge_button.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_bottom_container.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_controller.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_top_container.h"
@@ -37,8 +41,16 @@
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_view.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_unpinned_tab_container_view.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/omnibox/browser/location_bar_model.h"
+#include "components/url_formatter/url_formatter.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/color/color_id.h"
 #include "ui/compositor/layer.h"
@@ -53,9 +65,23 @@
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
 #include "ui/views/view_utils.h"
+#include "url/url_constants.h"
 
 namespace {
 constexpr int kRegionVerticalPadding = 5;
+
+const url_formatter::FormatUrlType kUrlFormatFlags =
+    url_formatter::kFormatUrlOmitDefaults |
+    url_formatter::kFormatUrlOmitTrivialSubdomains |
+    url_formatter::kFormatUrlOmitHTTPS | url_formatter::kFormatUrlTrimAfterHost;
+
+bool IsNewTabPageUrl(const GURL& url) {
+  if (!url.SchemeIs(content::kChromeUIScheme)) {
+    return false;
+  }
+  return url.host() == chrome::kChromeUINewTabHost ||
+         url.host() == chrome::kChromeUINewTabPageHost;
+}
 }  // namespace
 
 VerticalTabStripRegionView::VerticalTabStripRegionView(
@@ -83,13 +109,28 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
   // Create child views.
   top_button_container_ =
       AddChildView(std::make_unique<VerticalTabStripTopContainer>(
-          state_controller_, root_action_item));
+          state_controller_, root_action_item, browser_view->browser()));
+
+  url_row_button_ =
+      AddChildView(std::make_unique<VerticalTabStripFlatEdgeButton>());
+  url_row_button_->SetCallback(base::BindRepeating(
+      &VerticalTabStripRegionView::OnUrlRowPressed, base::Unretained(this)));
+  url_row_button_->SetHorizontalAlignment(gfx::HorizontalAlignment::ALIGN_LEFT);
+  url_row_button_->SetElideBehavior(gfx::ElideBehavior::ELIDE_TAIL);
+  url_row_button_->SetInsets(GetLayoutInsets(
+      LayoutInset::VERTICAL_TAB_STRIP_BOTTOM_BUTTON_UNCOLLAPSED));
 
   top_button_separator_ = AddChildView(std::make_unique<views::Separator>());
 
+  new_tab_button_container_ =
+      AddChildView(std::make_unique<VerticalTabStripBottomContainer>(
+          state_controller_, root_action_item, browser_view->browser(),
+          VerticalTabStripBottomContainer::ButtonSet::kNewTabOnly));
+
   bottom_button_container_ =
       AddChildView(std::make_unique<VerticalTabStripBottomContainer>(
-          state_controller_, root_action_item, browser_view->browser()));
+          state_controller_, root_action_item, browser_view->browser(),
+          VerticalTabStripBottomContainer::ButtonSet::kTabGroupOnly));
 
   gemini_button_ = AddChildView(std::make_unique<views::View>());
 
@@ -118,6 +159,8 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
       /*corner_color=*/CustomCornersBackground::TopContainerTheme()));
 
   UpdateColors();
+
+  UpdateUrlRow(browser_view_ ? browser_view_->GetActiveWebContents() : nullptr);
 }
 
 VerticalTabStripRegionView::~VerticalTabStripRegionView() {
@@ -144,6 +187,8 @@ void VerticalTabStripRegionView::AddedToWidget() {
   paint_as_active_subscription_ =
       GetWidget()->RegisterPaintAsActiveChangedCallback(base::BindRepeating(
           &VerticalTabStripRegionView::UpdateColors, base::Unretained(this)));
+
+  UpdateUrlRow(browser_view_ ? browser_view_->GetActiveWebContents() : nullptr);
 }
 
 void VerticalTabStripRegionView::Layout(PassKey) {
@@ -158,6 +203,12 @@ void VerticalTabStripRegionView::Layout(PassKey) {
 views::View* VerticalTabStripRegionView::GetDefaultFocusableChild() {
   if (top_button_container_ && top_button_container_->GetVisible()) {
     return top_button_container_;
+  }
+  if (url_row_button_ && url_row_button_->GetVisible()) {
+    return url_row_button_;
+  }
+  if (new_tab_button_container_ && new_tab_button_container_->GetVisible()) {
+    return new_tab_button_container_;
   }
   if (tab_strip_view_ && tab_strip_view_->GetVisible()) {
     return tab_strip_view_;
@@ -386,6 +437,72 @@ views::View* VerticalTabStripRegionView::GetTabStripView() {
   return tab_strip_view_;
 }
 
+void VerticalTabStripRegionView::UpdateUrlRow(content::WebContents* contents) {
+  if (!url_row_button_) {
+    return;
+  }
+
+  if (!contents) {
+    url_row_button_->SetText(std::u16string());
+    url_row_button_->SetTooltipText(std::u16string());
+    return;
+  }
+
+  if (browser_view_) {
+    LocationBarView* const location_bar = browser_view_->GetLocationBarView();
+    LocationBarModel* const model =
+        location_bar ? location_bar->GetLocationBarModel() : nullptr;
+    if (model) {
+      url_row_button_->UpdateIcon(
+          ui::ImageModel::FromVectorIcon(model->GetVectorIcon()));
+      const std::u16string display_text = model->GetURLForDisplay();
+      if (!display_text.empty()) {
+        url_row_button_->SetText(display_text);
+        url_row_button_->SetTooltipText(model->GetFormattedFullURL());
+        return;
+      }
+    }
+  }
+
+  GURL url = contents->GetVisibleURL();
+  if (const GURL& last_committed_url = contents->GetLastCommittedURL();
+      last_committed_url.is_valid()) {
+    url = last_committed_url;
+  }
+
+  std::u16string display_text;
+  if (!url.is_valid() || url.is_empty() || IsNewTabPageUrl(url)) {
+    display_text = l10n_util::GetStringUTF16(IDS_NEW_TAB);
+  } else if (url.SchemeIsFile()) {
+    display_text = l10n_util::GetStringUTF16(IDS_HOVER_CARD_FILE_URL_SOURCE);
+  } else if (url.SchemeIsBlob()) {
+    display_text = l10n_util::GetStringUTF16(IDS_HOVER_CARD_BLOB_URL_SOURCE);
+  } else if (url.SchemeIs(url::kViewSourceScheme)) {
+    display_text =
+        l10n_util::GetStringUTF16(IDS_HOVER_CARD_VIEW_SOURCE_URL_SOURCE);
+  } else {
+    display_text = url_formatter::FormatUrl(
+        url, kUrlFormatFlags, base::UnescapeRule::SPACES, nullptr, nullptr,
+        nullptr);
+  }
+
+  url_row_button_->SetText(display_text);
+  url_row_button_->SetTooltipText(base::UTF8ToUTF16(url.spec()));
+}
+
+void VerticalTabStripRegionView::OnUrlRowPressed() {
+  if (!browser_view_) {
+    return;
+  }
+
+  // Defer to avoid re-entrancy while processing the click, since focusing the
+  // location bar can transiently reparent views (Skepter omnibox popup).
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&BrowserView::SetFocusToLocationBar,
+                                browser_view_->GetAsWeakPtr(),
+                                /*is_user_initiated=*/true));
+}
+
 void VerticalTabStripRegionView::OnResize(int resize_amount,
                                           bool done_resizing) {
   if (!starting_width_on_resize_.has_value()) {
@@ -495,7 +612,12 @@ views::View* VerticalTabStripRegionView::SetTabStripView(
   );
   std::optional<size_t> separator_index = GetIndexOf(top_button_separator_);
   CHECK(separator_index.has_value());
-  ReorderChildView(tab_strip_view_, separator_index.value() + 1);
+  // Keep the new tab button directly below the top separator, and the tab
+  // strip directly below the new tab button.
+  ReorderChildView(new_tab_button_container_, separator_index.value() + 1);
+  std::optional<size_t> new_tab_index = GetIndexOf(new_tab_button_container_);
+  CHECK(new_tab_index.has_value());
+  ReorderChildView(tab_strip_view_, new_tab_index.value() + 1);
   return tab_strip_view_;
 }
 
@@ -511,15 +633,20 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
   // macOS "zen mode": fully hide the sidebar when collapsed.
   const bool zen_hidden = state_controller->IsCollapsed();
   top_button_container_->SetVisible(!zen_hidden);
+  url_row_button_->SetVisible(!zen_hidden);
   top_button_separator_->SetVisible(!zen_hidden);
+  new_tab_button_container_->SetVisible(!zen_hidden);
   bottom_button_container_->SetVisible(!zen_hidden);
   gemini_button_->SetVisible(!zen_hidden);
   if (tab_strip_view_) {
     tab_strip_view_->SetVisible(!zen_hidden);
   }
   if (drag_handler_) {
-    drag_handler_->SetVisible(!zen_hidden);
+    drag_handler_->GetDragContext()->SetVisible(!zen_hidden);
   }
+#endif
+#if !BUILDFLAG(IS_MAC)
+  url_row_button_->SetVisible(!state_controller->IsCollapsed());
 #endif
 
   if (target_collapse_state_.collapsed != state_controller->IsCollapsed()) {
@@ -553,6 +680,13 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
     top_button_container_->SetProperty(views::kMarginsKey,
                                        gfx::Insets::VH(0, padding));
   }
+
+  url_row_button_->SetProperty(views::kMarginsKey,
+                               gfx::Insets::TLBR(0, padding, 0, padding));
+
+  new_tab_button_container_->SetProperty(
+      views::kMarginsKey,
+      gfx::Insets::TLBR(kRegionVerticalPadding, padding, 0, padding));
 
   bottom_button_container_->SetProperty(
       views::kMarginsKey,

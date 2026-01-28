@@ -60,7 +60,7 @@ class VerticalTabStripTopContainerTest : public ChromeViewsTestBase {
     widget_ = CreateTestWidget(views::Widget::InitParams::CLIENT_OWNS_WIDGET);
     top_container_ =
         widget_->SetContentsView(std::make_unique<VerticalTabStripTopContainer>(
-            controller_.get(), action_item_.get()));
+            controller_.get(), action_item_.get(), /*browser=*/nullptr));
     widget_->Show();
   }
 

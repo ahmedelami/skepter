@@ -314,6 +314,7 @@ void ToolbarView::Init() {
 #if BUILDFLAG(IS_MAC)
   if (auto* controller = tabs::VerticalTabStripStateController::From(browser_);
       controller && controller->ShouldDisplayVerticalTabs()) {
+    hide_navigation_buttons_for_vertical_tabs_ = true;
     auto zen_toggle_button = std::make_unique<ToolbarButton>(
         base::BindRepeating(
             [](Browser* browser, const ui::Event& event) {
@@ -491,6 +492,19 @@ void ToolbarView::Init() {
                           base::Unretained(this)));
 
   forward_->SetVisible(show_forward_button_.GetValue());
+#if BUILDFLAG(IS_MAC)
+  if (hide_navigation_buttons_for_vertical_tabs_) {
+    if (back_) {
+      back_->SetVisible(false);
+    }
+    if (forward_) {
+      forward_->SetVisible(false);
+    }
+    if (reload_) {
+      reload_->SetVisible(false);
+    }
+  }
+#endif
 
   show_home_button_.Init(
       prefs::kShowHomeButton, prefs,
@@ -1190,7 +1204,10 @@ void ToolbarView::UpdateVerticalTabStripZenToggleVisibility() {
   }
 
   auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-  const bool should_show = controller && controller->ShouldDisplayVerticalTabs();
+  // Only show the toolbar toggle when the vertical tab strip is fully hidden
+  // ("zen mode"). When the strip is visible, the toggle lives in the sidebar.
+  const bool should_show = controller && controller->ShouldDisplayVerticalTabs() &&
+                           controller->IsCollapsed();
   vertical_tab_strip_zen_toggle_button_->SetVisible(should_show);
 
   if (controller) {
@@ -1220,6 +1237,13 @@ void ToolbarView::LoadImages() {
 }
 
 void ToolbarView::OnShowForwardButtonChanged() {
+#if BUILDFLAG(IS_MAC)
+  if (hide_navigation_buttons_for_vertical_tabs_) {
+    forward_->SetVisible(false);
+    InvalidateLayout();
+    return;
+  }
+#endif
   forward_->SetVisible(show_forward_button_.GetValue());
   InvalidateLayout();
 }

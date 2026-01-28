@@ -26,8 +26,13 @@ class RootTabCollectionNode;
 class VerticalUnpinnedTabContainerView;
 class VerticalPinnedTabContainerView;
 class VerticalTabStripBottomContainer;
+class VerticalTabStripFlatEdgeButton;
 class VerticalTabStripTopContainer;
 class TabDragContext;
+
+namespace content {
+class WebContents;
+}  // namespace content
 
 namespace tabs {
 class VerticalTabStripStateController;
@@ -98,6 +103,8 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
     return bottom_button_container_;
   }
 
+  void UpdateUrlRow(content::WebContents* contents);
+
   VerticalTabStripController* GetVerticalTabStripController() {
     return tab_strip_controller_.get();
   }
@@ -162,6 +169,7 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   views::View* SetTabStripView(std::unique_ptr<views::View> view);
   void ClearTabStripView(views::View* view);
 
+  void OnUrlRowPressed();
   void OnCollapsedStateChanged(
       tabs::VerticalTabStripStateController* state_controller);
   void UpdateCollapseState(tabs::VerticalTabStripState new_state);
@@ -177,7 +185,9 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   bool tab_strip_editable_for_testing_ = true;
 
   raw_ptr<VerticalTabStripTopContainer> top_button_container_ = nullptr;
+  raw_ptr<VerticalTabStripFlatEdgeButton> url_row_button_ = nullptr;
   raw_ptr<views::Separator> top_button_separator_ = nullptr;
+  raw_ptr<VerticalTabStripBottomContainer> new_tab_button_container_ = nullptr;
   raw_ptr<VerticalTabStripView> tab_strip_view_ = nullptr;
   raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
   raw_ptr<views::View> gemini_button_ = nullptr;

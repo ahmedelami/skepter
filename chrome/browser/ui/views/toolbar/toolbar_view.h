@@ -310,6 +310,7 @@ class ToolbarView : public views::AccessiblePaneView,
 #if BUILDFLAG(IS_MAC)
   raw_ptr<ToolbarButton> vertical_tab_strip_zen_toggle_button_ = nullptr;
   base::CallbackListSubscription vertical_tab_strip_collapse_subscription_;
+  bool hide_navigation_buttons_for_vertical_tabs_ = false;
 #endif
 
   const raw_ptr<Browser> browser_;
