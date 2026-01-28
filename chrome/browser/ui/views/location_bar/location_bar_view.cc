@@ -247,23 +247,27 @@ LocationBarView::LocationBarView(Browser* browser,
         menu->RunMenuAt(point, ui::mojom::MenuSourceType::kMouse);
       });
   set_suppress_default_focus_handling();
-  if (!is_popup_mode_) {
-    views::FocusRing::Install(this);
-    views::FocusRing::Get(this)->SetHasFocusPredicate(
-        base::BindRepeating([](const View* view) {
+	  if (!is_popup_mode_) {
+	    views::FocusRing::Install(this);
+	    views::FocusRing::Get(this)->SetHasFocusPredicate(
+	        base::BindRepeating([](const View* view) {
           const auto* v = views::AsViewClass<LocationBarView>(view);
           CHECK(v);
           // Show focus ring when the Omnibox is visibly focused and the popup
           // is closed.
           return v->GetOmniboxController()->edit_model()->is_caret_visible() &&
-                 !v->GetOmniboxController()->IsPopupOpen();
-        }));
-    views::FocusRing::Get(this)->SetOutsetFocusRingDisabled(true);
-    views::InstallPillHighlightPathGenerator(this);
+	                 !v->GetOmniboxController()->IsPopupOpen();
+	        }));
+	    views::FocusRing::Get(this)->SetOutsetFocusRingDisabled(true);
+#if BUILDFLAG(IS_MAC)
+	    views::InstallRectHighlightPathGenerator(this);
+#else
+	    views::InstallPillHighlightPathGenerator(this);
+#endif
 
 #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
-    if (features::IsOsLevelGeolocationPermissionSupportEnabled()) {
-      geolocation_permission_observation_.Observe(
+	    if (features::IsOsLevelGeolocationPermissionSupportEnabled()) {
+	      geolocation_permission_observation_.Observe(
           device::GeolocationSystemPermissionManager::GetInstance());
     }
 #endif  // BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
@@ -1486,10 +1490,14 @@ int LocationBarView::GetMinimumTrailingWidth() const {
 }
 
 gfx::Rect LocationBarView::GetLocalBoundsWithoutEndcaps() const {
+#if BUILDFLAG(IS_MAC)
+  return GetLocalBounds();
+#else
   const int border_radius = height() / 2;
   gfx::Rect bounds_without_endcaps(GetLocalBounds());
   bounds_without_endcaps.Inset(gfx::Insets::VH(0, border_radius));
   return bounds_without_endcaps;
+#endif
 }
 
 void LocationBarView::RefreshBackground() {
@@ -1502,6 +1510,25 @@ void LocationBarView::RefreshBackground() {
                              ui::NativeTheme::PreferredContrast::kMore;
 
   const auto* const color_provider = GetColorProvider();
+#if BUILDFLAG(IS_MAC)
+  if (!is_popup_mode_) {
+    // Make the omnibox blend into the toolbar on macOS (no pill background).
+    background_color_ = color_provider->GetColor(kColorToolbar);
+    SetBackground(views::CreateSolidBackground(background_color_));
+
+    // Keep the views::Textfield in sync. It needs an opaque background to
+    // correctly enable subpixel AA.
+    omnibox_view_->SetBackgroundColor(background_color_);
+
+    if (base::FeatureList::IsEnabled(
+            content_settings::features::kLeftHandSideActivityIndicators)) {
+      permission_dashboard_view_->SetDividerBackgroundColor(background_color_);
+    }
+
+    SchedulePaint();
+    return;
+  }
+#endif
   SkColor normal = color_provider->GetColor(kColorLocationBarBackground);
   SkColor hovered =
       color_provider->GetColor(kColorLocationBarBackgroundHovered);

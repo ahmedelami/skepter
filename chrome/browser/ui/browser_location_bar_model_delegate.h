@@ -25,6 +25,7 @@ class BrowserLocationBarModelDelegate : public ChromeLocationBarModelDelegate {
 
   // ChromeLocationBarModelDelegate:
   content::WebContents* GetActiveWebContents() const override;
+  bool ShouldTrimDisplayUrlAfterHostName() const override;
 
  private:
   const raw_ref<TabStripModel> tab_strip_model_;

@@ -208,10 +208,19 @@ gfx::Insets GetLayoutInsets(LayoutInset inset) {
       }
 
     case TOOLBAR_INTERIOR_MARGIN:
+#if BUILDFLAG(IS_MAC)
+      // Tighten the toolbar padding on macOS.
+      return touch_ui ? gfx::Insets::VH(1, 0) : gfx::Insets::VH(1, 1);
+#else
       return touch_ui ? gfx::Insets::VH(4, 0) : gfx::Insets::VH(6, 5);
+#endif
 
     case WEBUI_TAB_STRIP_TOOLBAR_INTERIOR_MARGIN:
+#if BUILDFLAG(IS_MAC)
+      return gfx::Insets::VH(1, 0);
+#else
       return gfx::Insets::VH(4, 0);
+#endif
 
     case VERTICAL_TAB_STRIP_BOTTOM_BUTTON_UNCOLLAPSED:
       return gfx::Insets::VH(5, 14);

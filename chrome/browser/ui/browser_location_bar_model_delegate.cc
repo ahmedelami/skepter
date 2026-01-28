@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/browser_location_bar_model_delegate.h"
 
 #include "base/check_deref.h"
+#include "build/build_config.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 
 BrowserLocationBarModelDelegate::BrowserLocationBarModelDelegate(
@@ -16,4 +17,14 @@ BrowserLocationBarModelDelegate::~BrowserLocationBarModelDelegate() = default;
 content::WebContents* BrowserLocationBarModelDelegate::GetActiveWebContents()
     const {
   return tab_strip_model_->GetActiveWebContents();
+}
+
+bool BrowserLocationBarModelDelegate::ShouldTrimDisplayUrlAfterHostName() const {
+#if BUILDFLAG(IS_MAC)
+  // Arc-like steady-state: show only the domain/origin by default (full URL is
+  // still available when focusing the omnibox).
+  return true;
+#else
+  return false;
+#endif
 }
