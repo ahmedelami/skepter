@@ -100,6 +100,10 @@ class VerticalTabStripRegionView;
 class WebAppFrameToolbarView;
 class WebUITabStripContainerView;
 
+#if BUILDFLAG(IS_MAC)
+class SkepterOmniboxPopupController;
+#endif
+
 namespace gfx {
 class AnimationRunner;
 }  // namespace gfx
@@ -1239,6 +1243,10 @@ class BrowserView : public BrowserWindow,
 
   // The Toolbar containing the navigation buttons, menus and the address bar.
   raw_ptr<ToolbarView> toolbar_ = nullptr;
+
+#if BUILDFLAG(IS_MAC)
+  std::unique_ptr<SkepterOmniboxPopupController> skepter_omnibox_popup_;
+#endif
 
   // The OverlayView for the widget, which is used to host `top_container_`
   // during immersive reveal.

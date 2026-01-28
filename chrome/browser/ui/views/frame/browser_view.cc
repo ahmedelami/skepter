@@ -322,6 +322,7 @@
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/layout/box_layout.h"
 #include "ui/views/layout/fill_layout.h"
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
@@ -389,6 +390,266 @@ using base::UserMetricsAction;
 using content::WebContents;
 using input::NativeWebKeyboardEvent;
 using web_modal::WebContentsModalDialogHost;
+
+#if BUILDFLAG(IS_MAC)
+class SkepterOmniboxPopupView;
+
+class SkepterOmniboxPopupController : public views::WidgetObserver {
+ public:
+  explicit SkepterOmniboxPopupController(BrowserView* browser_view)
+      : browser_view_(browser_view) {}
+
+  SkepterOmniboxPopupController(const SkepterOmniboxPopupController&) = delete;
+  SkepterOmniboxPopupController& operator=(const SkepterOmniboxPopupController&) =
+      delete;
+
+  ~SkepterOmniboxPopupController() override { CloseAndRestoreNow(); }
+
+  bool Show();
+  void OnPopupViewClosing(SkepterOmniboxPopupView* popup_view);
+
+  // views::WidgetObserver:
+  void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
+
+ private:
+  void CloseAndRestoreNow();
+  void RestoreLocationBarFromPopup();
+  void SchedulePopupWidgetCleanup();
+  void DestroyPopupWidget();
+  gfx::Rect CalculatePopupBounds() const;
+
+  const raw_ptr<BrowserView> browser_view_;
+
+  std::unique_ptr<views::Widget> popup_widget_;
+  raw_ptr<SkepterOmniboxPopupView> popup_view_ = nullptr;
+  raw_ptr<views::View> placeholder_ = nullptr;
+  int placeholder_index_ = -1;
+
+  base::WeakPtrFactory<SkepterOmniboxPopupController> weak_ptr_factory_{this};
+};
+
+class SkepterOmniboxPopupView : public views::WidgetDelegateView {
+ public:
+  SkepterOmniboxPopupView(BrowserView* browser_view,
+                          SkepterOmniboxPopupController* controller,
+                          std::unique_ptr<views::View> location_bar_view)
+      : browser_view_(browser_view), controller_(controller) {
+    SetOwnedByWidget(true);
+
+    auto* layout =
+        SetLayoutManager(std::make_unique<views::BoxLayout>(
+            views::BoxLayout::Orientation::kVertical, gfx::Insets(8), 0));
+    layout->set_cross_axis_alignment(
+        views::BoxLayout::CrossAxisAlignment::kStretch);
+
+    location_bar_view_ = AddChildView(std::move(location_bar_view));
+  }
+
+  SkepterOmniboxPopupView(const SkepterOmniboxPopupView&) = delete;
+  SkepterOmniboxPopupView& operator=(const SkepterOmniboxPopupView&) = delete;
+  ~SkepterOmniboxPopupView() override = default;
+
+  bool CanResize() const override { return false; }
+  bool CanMaximize() const override { return false; }
+  bool CanMinimize() const override { return false; }
+
+  std::unique_ptr<views::View> TakeLocationBarView() {
+    if (!location_bar_view_) {
+      return nullptr;
+    }
+    auto result = RemoveChildViewT(location_bar_view_);
+    location_bar_view_ = nullptr;
+    return result;
+  }
+
+  void WindowClosing() override {
+    views::WidgetDelegateView::WindowClosing();
+    if (controller_) {
+      controller_->OnPopupViewClosing(this);
+    }
+  }
+
+ private:
+  raw_ptr<BrowserView> browser_view_;
+  raw_ptr<SkepterOmniboxPopupController> controller_;
+  raw_ptr<views::View> location_bar_view_ = nullptr;
+};
+
+bool SkepterOmniboxPopupController::Show() {
+  auto* const vertical_tab_strip_state_controller =
+      tabs::VerticalTabStripStateController::From(browser_view_->browser());
+  if (!vertical_tab_strip_state_controller ||
+      !vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs()) {
+    return false;
+  }
+
+  if (!browser_view_->toolbar()) {
+    return false;
+  }
+
+  LocationBarView* const location_bar = browser_view_->GetLocationBarView();
+  if (!location_bar) {
+    return false;
+  }
+
+  if (popup_widget_) {
+    popup_widget_->Activate();
+    location_bar->FocusLocation(/*is_user_initiated=*/true);
+    return true;
+  }
+
+  views::View* const toolbar_view = browser_view_->toolbar();
+  placeholder_index_ = toolbar_view->GetIndexOf(location_bar);
+  if (placeholder_index_ < 0) {
+    return false;
+  }
+
+  const auto* const flex_spec =
+      location_bar->GetProperty(views::kFlexBehaviorKey);
+  const auto* const margins = location_bar->GetProperty(views::kMarginsKey);
+
+  auto location_bar_holder = toolbar_view->RemoveChildViewT(location_bar);
+  if (!location_bar_holder) {
+    return false;
+  }
+
+  auto placeholder = std::make_unique<views::View>();
+  placeholder->SetPreferredSize(location_bar->GetPreferredSize());
+  if (flex_spec) {
+    placeholder->SetProperty(views::kFlexBehaviorKey, *flex_spec);
+  }
+  if (margins) {
+    placeholder->SetProperty(views::kMarginsKey, *margins);
+  }
+  placeholder_ =
+      toolbar_view->AddChildViewAt(std::move(placeholder), placeholder_index_);
+
+  auto delegate = std::make_unique<SkepterOmniboxPopupView>(
+      browser_view_, this, std::move(location_bar_holder));
+  popup_view_ = delegate.get();
+
+  const gfx::Rect bounds = CalculatePopupBounds();
+
+  views::Widget::InitParams params(
+      views::Widget::InitParams::Ownership::CLIENT_OWNS_WIDGET,
+      views::Widget::InitParams::TYPE_POPUP);
+  params.name = "SkepterOmniboxPopup";
+  params.activatable = views::Widget::InitParams::Activatable::kYes;
+  params.shadow_type = views::Widget::InitParams::ShadowType::kDrop;
+  params.context = browser_view_->GetWidget()->GetNativeWindow();
+  params.SetParent(browser_view_->GetWidget()->GetNativeView());
+  params.bounds = bounds;
+  params.delegate = delegate.release();
+
+  popup_widget_ = std::make_unique<views::Widget>();
+  popup_widget_->Init(std::move(params));
+  popup_widget_->AddObserver(this);
+  popup_widget_->Show();
+  popup_widget_->Activate();
+
+  location_bar->FocusLocation(/*is_user_initiated=*/true);
+  location_bar->SelectAll();
+  return true;
+}
+
+void SkepterOmniboxPopupController::OnPopupViewClosing(
+    SkepterOmniboxPopupView* popup_view) {
+  if (popup_view != popup_view_) {
+    return;
+  }
+  RestoreLocationBarFromPopup();
+  SchedulePopupWidgetCleanup();
+}
+
+void SkepterOmniboxPopupController::OnWidgetActivationChanged(views::Widget* widget,
+                                                             bool active) {
+  if (!popup_widget_ || widget != popup_widget_.get() || active) {
+    return;
+  }
+  popup_widget_->CloseWithReason(views::Widget::ClosedReason::kLostFocus);
+}
+
+void SkepterOmniboxPopupController::CloseAndRestoreNow() {
+  if (!popup_widget_) {
+    return;
+  }
+  RestoreLocationBarFromPopup();
+  popup_widget_->RemoveObserver(this);
+  popup_widget_.reset();
+  popup_view_ = nullptr;
+}
+
+void SkepterOmniboxPopupController::RestoreLocationBarFromPopup() {
+  if (!popup_view_) {
+    return;
+  }
+
+  views::View* const toolbar_view = browser_view_->toolbar();
+  if (!toolbar_view) {
+    return;
+  }
+
+  std::unique_ptr<views::View> location_bar_holder =
+      popup_view_->TakeLocationBarView();
+  popup_view_ = nullptr;
+
+  if (!location_bar_holder) {
+    return;
+  }
+
+  if (placeholder_) {
+    toolbar_view->RemoveChildViewT(placeholder_);
+    placeholder_ = nullptr;
+  }
+
+  toolbar_view->AddChildViewAt(std::move(location_bar_holder),
+                               placeholder_index_);
+  toolbar_view->InvalidateLayout();
+  browser_view_->InvalidateLayout();
+}
+
+void SkepterOmniboxPopupController::SchedulePopupWidgetCleanup() {
+  if (!popup_widget_) {
+    return;
+  }
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&SkepterOmniboxPopupController::DestroyPopupWidget,
+                     weak_ptr_factory_.GetWeakPtr()));
+}
+
+void SkepterOmniboxPopupController::DestroyPopupWidget() {
+  if (!popup_widget_) {
+    return;
+  }
+  popup_widget_->RemoveObserver(this);
+  popup_widget_.reset();
+}
+
+gfx::Rect SkepterOmniboxPopupController::CalculatePopupBounds() const {
+  gfx::Rect window_bounds = browser_view_->GetWidget()->GetWindowBoundsInScreen();
+
+  constexpr int kHorizontalMargin = 24;
+  constexpr int kMaxWidth = 720;
+
+  const int width = std::max(
+      1, std::min(kMaxWidth, window_bounds.width() - kHorizontalMargin * 2));
+
+  constexpr int kPopupVerticalPadding = 16;  // 8px top + 8px bottom.
+  const int height = browser_view_->GetLocationBarView()
+                         ? browser_view_->GetLocationBarView()
+                                   ->GetPreferredSize()
+                                   .height() +
+                               kPopupVerticalPadding
+                         : 48;
+
+  const int x = window_bounds.x() + (window_bounds.width() - width) / 2;
+  const int y = window_bounds.y() + (window_bounds.height() - height) / 4;
+
+  return gfx::Rect(x, y, width, height);
+}
+
+#endif  // BUILDFLAG(IS_MAC)
 
 namespace {
 
@@ -2266,6 +2527,19 @@ void BrowserView::SetFocusToLocationBar(bool is_user_initiated) {
     return;
   }
 #endif
+
+#if BUILDFLAG(IS_MAC)
+  if (is_user_initiated) {
+    if (!skepter_omnibox_popup_) {
+      skepter_omnibox_popup_ = std::make_unique<SkepterOmniboxPopupController>(
+          this);
+    }
+    if (skepter_omnibox_popup_->Show()) {
+      return;
+    }
+  }
+#endif
+
   if (!IsLocationBarVisible()) {
     return;
   }
