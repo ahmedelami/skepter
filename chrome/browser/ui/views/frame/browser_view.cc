@@ -4555,15 +4555,36 @@ void BrowserView::UpdateTabSearchBubbleHost() {
       tabs::VerticalTabStripStateController::From(browser_);
   if (vertical_tab_strip_state_controller &&
       vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs()) {
+#if BUILDFLAG(IS_MAC)
+    // Tab search entry points are hidden on macOS. Do NOT anchor the tab search
+    // bubble to the vertical tabs collapse button, since TabSearchBubbleHost
+    // installs a MenuButtonController on the anchor and would make the collapse
+    // button open the Tab Search bubble.
+    if (toolbar_) {
+      tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
+          toolbar_->app_menu_button(), browser_.get());
+    }
+    return;
+#else
     tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
-        vertical_tab_strip_region_view_->GetTopContainer()
-            ->GetTabSearchButton(),
+        vertical_tab_strip_region_view_->GetTopContainer()->GetTabSearchButton(),
         browser_.get());
+#endif
   } else if (features::HasTabSearchToolbarButton()) {
+#if BUILDFLAG(IS_MAC)
+    // Tab search entry points are hidden on macOS; anchor the bubble to an
+    // existing toolbar button instead.
+    if (toolbar_) {
+      tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
+          toolbar_->app_menu_button(), browser_.get());
+    }
+    return;
+#else
     tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
         toolbar_->tab_search_button(), browser_.get());
     CHECK(toolbar_button_controller);
     toolbar_button_controller->UpdateBubbleHost(tab_search_bubble_host_.get());
+#endif
   } else {
     tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
         BrowserElementsViews::From(browser_.get())
