@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ui/tabs/features.h"
 
+#include "build/build_config.h"
+#include "build/buildflag.h"
 #include "base/feature_list.h"
 #include "chrome/browser/ui/ui_features.h"
 
@@ -15,7 +17,11 @@ BASE_FEATURE(kDebugUITabStrip, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kTabGroupHome, base::FEATURE_DISABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_MAC)
+BASE_FEATURE(kVerticalTabs, base::FEATURE_ENABLED_BY_DEFAULT);
+#else
 BASE_FEATURE(kVerticalTabs, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 BASE_FEATURE(kTabSelectionByPointer, base::FEATURE_ENABLED_BY_DEFAULT);
 

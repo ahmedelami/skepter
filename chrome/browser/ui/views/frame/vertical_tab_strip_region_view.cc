@@ -12,6 +12,7 @@
 #include "base/containers/adapters.h"
 #include "base/functional/bind.h"
 #include "base/notimplemented.h"
+#include "build/build_config.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -155,7 +156,16 @@ void VerticalTabStripRegionView::Layout(PassKey) {
 }
 
 views::View* VerticalTabStripRegionView::GetDefaultFocusableChild() {
-  return top_button_container_;
+  if (top_button_container_ && top_button_container_->GetVisible()) {
+    return top_button_container_;
+  }
+  if (tab_strip_view_ && tab_strip_view_->GetVisible()) {
+    return tab_strip_view_;
+  }
+  if (bottom_button_container_ && bottom_button_container_->GetVisible()) {
+    return bottom_button_container_;
+  }
+  return nullptr;
 }
 
 void VerticalTabStripRegionView::InitializeTabStrip() {
@@ -475,8 +485,14 @@ views::View* VerticalTabStripRegionView::SetTabStripView(
       views::kFlexBehaviorKey,
       views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToMinimum,
                                views::MaximumFlexSizeRule::kUnbounded));
-  tab_strip_view_->SetProperty(views::kMarginsKey,
-                               gfx::Insets::VH(kRegionVerticalPadding, 0));
+  tab_strip_view_->SetProperty(
+      views::kMarginsKey,
+#if BUILDFLAG(IS_MAC)
+      gfx::Insets::TLBR(0, 0, kRegionVerticalPadding, 0)
+#else
+      gfx::Insets::VH(kRegionVerticalPadding, 0)
+#endif
+  );
   std::optional<size_t> separator_index = GetIndexOf(top_button_separator_);
   CHECK(separator_index.has_value());
   ReorderChildView(tab_strip_view_, separator_index.value() + 1);
@@ -491,6 +507,21 @@ void VerticalTabStripRegionView::ClearTabStripView(views::View* view) {
 
 void VerticalTabStripRegionView::OnCollapsedStateChanged(
     tabs::VerticalTabStripStateController* state_controller) {
+#if BUILDFLAG(IS_MAC)
+  // macOS "zen mode": fully hide the sidebar when collapsed.
+  const bool zen_hidden = state_controller->IsCollapsed();
+  top_button_container_->SetVisible(!zen_hidden);
+  top_button_separator_->SetVisible(!zen_hidden);
+  bottom_button_container_->SetVisible(!zen_hidden);
+  gemini_button_->SetVisible(!zen_hidden);
+  if (tab_strip_view_) {
+    tab_strip_view_->SetVisible(!zen_hidden);
+  }
+  if (drag_handler_) {
+    drag_handler_->SetVisible(!zen_hidden);
+  }
+#endif
+
   if (target_collapse_state_.collapsed != state_controller->IsCollapsed()) {
     // UpdateCollapseState is responsible for setting the collapsed state of the
     // state controller due to a resizing operation. To avoid reentrancy in that

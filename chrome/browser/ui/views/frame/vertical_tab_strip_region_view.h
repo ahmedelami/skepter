@@ -9,6 +9,7 @@
 
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
+#include "build/build_config.h"
 #include "chrome/browser/ui/tabs/tab_renderer_data.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
@@ -54,7 +55,13 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   // TODO(crbug.com/465832180): Replace constant based width final max width for
   // view.
   static constexpr int kUncollapsedMaxWidth = 400;
+#if BUILDFLAG(IS_MAC)
+  // macOS "zen mode": fully hide the sidebar when collapsed while leaving the
+  // resize area hittable.
+  static constexpr int kCollapsedWidth = kResizeAreaWidth;
+#else
   static constexpr int kCollapsedWidth = 48;
+#endif
   // TODO(crbug.com/465833741): Determine snapping behavior.
   static constexpr int kCollapseSnapWidth =
       (kUncollapsedMinWidth + kCollapsedWidth) / 2;

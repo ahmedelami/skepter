@@ -9,6 +9,7 @@
 #include <optional>
 #include <vector>
 
+#include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/command_observer.h"
@@ -63,6 +64,10 @@ class PerformanceInterventionButton;
 namespace views {
 class FlexLayout;
 }
+
+namespace tabs {
+class VerticalTabStripStateController;
+}  // namespace tabs
 
 // The Browser Window's toolbar.
 class ToolbarView : public views::AccessiblePaneView,
@@ -258,6 +263,12 @@ class ToolbarView : public views::AccessiblePaneView,
   // Changes the visibility of the Chrome Labs entry point based on prefs.
   void OnChromeLabsPrefChanged();
 
+#if BUILDFLAG(IS_MAC)
+  void OnVerticalTabStripCollapsedChanged(
+      tabs::VerticalTabStripStateController* controller);
+  void UpdateVerticalTabStripZenToggleVisibility();
+#endif
+
   // Loads the images for all the child views.
   void LoadImages();
 
@@ -295,6 +306,11 @@ class ToolbarView : public views::AccessiblePaneView,
   raw_ptr<BrowserAppMenuButton> app_menu_button_ = nullptr;
   raw_ptr<views::View> new_tab_button_ = nullptr;
   raw_ptr<PinnedActionToolbarButton> tab_search_button_ = nullptr;
+
+#if BUILDFLAG(IS_MAC)
+  raw_ptr<ToolbarButton> vertical_tab_strip_zen_toggle_button_ = nullptr;
+  base::CallbackListSubscription vertical_tab_strip_collapse_subscription_;
+#endif
 
   const raw_ptr<Browser> browser_;
   const raw_ptr<BrowserView> browser_view_;

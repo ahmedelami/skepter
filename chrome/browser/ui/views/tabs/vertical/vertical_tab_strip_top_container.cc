@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_top_container.h"
 
+#include "build/build_config.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/layout_constants.h"
@@ -28,9 +29,11 @@ VerticalTabStripTopContainer::VerticalTabStripTopContainer(
               kVerticalTabStripTopContainerElementId);
   SetLayoutManager(std::make_unique<views::DelegatingLayoutManager>(this));
 
+#if !BUILDFLAG(IS_MAC)
   tab_search_button_ = AddChildButtonFor(kActionTabSearch);
   tab_search_button_->SetProperty(views::kElementIdentifierKey,
                                   kTabSearchButtonElementId);
+#endif
 
   collapse_button_ = AddChildButtonFor(kActionToggleCollapseVertical);
   collapse_button_->SetProperty(views::kElementIdentifierKey,
@@ -49,11 +52,12 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
 
   std::vector<views::LabelButton*> container_buttons;
 
-  CHECK(tab_search_button_);
-  container_buttons.push_back(tab_search_button_);
-
-  CHECK(collapse_button_);
-  container_buttons.push_back(collapse_button_);
+  if (tab_search_button_ && tab_search_button_->GetVisible()) {
+    container_buttons.push_back(tab_search_button_);
+  }
+  if (collapse_button_ && collapse_button_->GetVisible()) {
+    container_buttons.push_back(collapse_button_);
+  }
 
   const int padding =
       GetLayoutConstant(LayoutConstant::kVerticalTabStripTopButtonPadding);
@@ -65,7 +69,9 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
     for (views::LabelButton* container_button : container_buttons) {
       total_height += container_button->GetPreferredSize().height();
     }
-    total_height += (container_buttons.size() - 1) * padding;
+    if (container_buttons.size() >= 2) {
+      total_height += (container_buttons.size() - 1) * padding;
+    }
 
     if (total_height > host_size.height()) {
       host_size.set_height(total_height);
@@ -94,7 +100,9 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
       total_width += container_button->GetPreferredSize().width();
     }
 
-    total_width += (container_buttons.size() - 1) * padding;
+    if (container_buttons.size() >= 2) {
+      total_width += (container_buttons.size() - 1) * padding;
+    }
 
     // If we're trying to get the minimum size, it will ask for layout for size
     // bounds {0, 0}, but overflow is based on available size.
@@ -131,7 +139,7 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
         host_size.SetToMax(gfx::Size(0, bounds.bottom()));
       }
 
-      if (tab_search_button_) {
+      if (tab_search_button_ && tab_search_button_->GetVisible()) {
         const gfx::Size pref_size = tab_search_button_->GetPreferredSize();
         gfx::Rect bounds(host_size.width() - pref_size.width(),
                          std::max(0, y_baseline - pref_size.height() / 2),
@@ -189,11 +197,13 @@ views::LabelButton* VerticalTabStripTopContainer::AddChildButtonFor(
 
 bool VerticalTabStripTopContainer::IsPositionInWindowCaption(
     const gfx::Point& point) {
-  if (tab_search_button_ && IsHitInView(tab_search_button_, point)) {
+  if (tab_search_button_ && tab_search_button_->GetVisible() &&
+      IsHitInView(tab_search_button_, point)) {
     return false;
   }
 
-  if (collapse_button_ && IsHitInView(collapse_button_, point)) {
+  if (collapse_button_ && collapse_button_->GetVisible() &&
+      IsHitInView(collapse_button_, point)) {
     return false;
   }
 

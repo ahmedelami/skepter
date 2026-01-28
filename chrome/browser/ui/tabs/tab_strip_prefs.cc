@@ -15,6 +15,14 @@
 namespace {
 
 std::optional<bool> g_tab_search_trailing_tabstrip_at_startup = std::nullopt;
+
+bool GetDefaultVerticalTabsEnabled() {
+#if BUILDFLAG(IS_MAC)
+  return true;
+#else
+  return false;
+#endif
+}
 }
 
 namespace tabs {
@@ -32,7 +40,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterBooleanPref(prefs::kTabSearchRightAligned,
                                 GetDefaultTabSearchRightAligned());
   registry->RegisterBooleanPref(
-      prefs::kVerticalTabsEnabled, false,
+      prefs::kVerticalTabsEnabled, GetDefaultVerticalTabsEnabled(),
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
 }
 

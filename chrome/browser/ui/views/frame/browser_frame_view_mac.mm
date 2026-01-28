@@ -68,6 +68,10 @@ FullscreenToolbarStyle GetUserPreferredToolbarStyle(bool always_show) {
                      : FullscreenToolbarStyle::TOOLBAR_HIDDEN;
 }
 
+bool ShouldHideTrafficLightsForVerticalTabs(const BrowserView& browser_view) {
+  return browser_view.ShouldDrawVerticalTabStrip();
+}
+
 }  // namespace
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -398,6 +402,10 @@ BrowserFrameViewMac::GetCaptionButtonBounds() const {
     return result;
   }
 
+  if (ShouldHideTrafficLightsForVerticalTabs(*GetBrowserView())) {
+    return result;
+  }
+
   // LINT.IfChange(MacTabStripInsets)
   // These are empirically determined; feel free to change them if they're
   // not precise.
@@ -440,6 +448,22 @@ void BrowserFrameViewMac::OnPaint(gfx::Canvas* canvas) {
 }
 
 void BrowserFrameViewMac::Layout(PassKey) {
+  if (NSWindow* const window = GetWidget()
+                                   ? GetWidget()
+                                         ->GetNativeWindow()
+                                         .GetNativeNSWindow()
+                                   : nullptr) {
+    const bool hide =
+        ShouldHideTrafficLightsForVerticalTabs(*GetBrowserView());
+    for (const NSWindowButton window_button :
+         {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton}) {
+      if (NSButton* const button = [window standardWindowButton:window_button]) {
+        [button setHidden:hide];
+        [button setEnabled:!hide];
+      }
+    }
+  }
+
   if (GetBrowserView()->IsWindowControlsOverlayEnabled()) {
     LayoutWindowControlsOverlay();
   }

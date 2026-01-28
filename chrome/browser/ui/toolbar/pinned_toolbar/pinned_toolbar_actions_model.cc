@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "build/build_config.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/metrics/user_metrics.h"
@@ -204,6 +205,12 @@ void PinnedToolbarActionsModel::UpdatePinnedActionIds() {
                "added to the prefs object.";
         continue;
       }
+#if BUILDFLAG(IS_MAC)
+      // Hide the Tab Search toolbar button UI on macOS.
+      if (id.value() == kActionTabSearch) {
+        continue;
+      }
+#endif
       pinned_action_ids_.push_back(id.value());
     }
   }

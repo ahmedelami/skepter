@@ -8,6 +8,7 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/views/actions/action_view_interface.h"
+#include "ui/views/accessibility/view_accessibility.h"
 
 namespace {
 class TopContainerButtonActionViewInterface
@@ -23,6 +24,10 @@ class TopContainerButtonActionViewInterface
     if (action_item->GetImage().IsVectorIcon()) {
       action_view_->UpdateIcon(action_item->GetImage());
     }
+    // Keep this button icon-only; use the action text for accessibility/tooltip.
+    action_view_->SetText(std::u16string());
+    action_view_->GetViewAccessibility().SetName(
+        std::u16string(action_item->GetText()));
   }
 
  private:

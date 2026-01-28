@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "build/build_config.h"
 #include "base/i18n/rtl.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
@@ -228,6 +229,9 @@ TabSearchContainer::TabSearchContainer(bool tab_search_before_chips,
   tab_search_button->SetProperty(views::kCrossAxisAlignmentKey,
                                  views::LayoutAlignment::kCenter);
   tab_search_button_ = AddChildView(std::move(tab_search_button));
+#if BUILDFLAG(IS_MAC)
+  tab_search_button_->SetVisible(false);
+#endif
 
   int tab_search_button_index = GetIndexOf(tab_search_button_).value();
   int index = tab_search_before_chips ? tab_search_button_index + 1

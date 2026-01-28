@@ -20,6 +20,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/command_updater.h"
 #include "chrome/browser/media/router/media_router_feature.h"
@@ -29,6 +30,7 @@
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_content_setting_bubble_model_delegate.h"
@@ -44,6 +46,7 @@
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/tab_search_toolbar_button_controller.h"
@@ -105,6 +108,7 @@
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkPathBuilder.h"
 #include "ui/accessibility/ax_node_data.h"
+#include "ui/actions/actions.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -127,6 +131,7 @@
 #include "ui/views/layout/proposed_layout.h"
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/vector_icons.h"
 #include "ui/views/widget/tooltip_manager.h"
 #include "ui/views/widget/widget.h"
 
@@ -306,6 +311,29 @@ void ToolbarView::Init() {
 
   // Always add children in order from left to right, for accessibility.
 
+#if BUILDFLAG(IS_MAC)
+  if (auto* controller = tabs::VerticalTabStripStateController::From(browser_);
+      controller && controller->ShouldDisplayVerticalTabs()) {
+    auto zen_toggle_button = std::make_unique<ToolbarButton>(
+        base::BindRepeating(
+            [](Browser* browser, const ui::Event& event) {
+              if (auto* controller =
+                      tabs::VerticalTabStripStateController::From(browser)) {
+                controller->SetCollapsed(!controller->IsCollapsed());
+              }
+            },
+            browser_));
+    zen_toggle_button->SetVisible(false);
+    vertical_tab_strip_zen_toggle_button_ =
+        AddChildView(std::move(zen_toggle_button));
+    UpdateVerticalTabStripZenToggleVisibility();
+    vertical_tab_strip_collapse_subscription_ =
+        controller->RegisterOnCollapseChanged(base::BindRepeating(
+            &ToolbarView::OnVerticalTabStripCollapsedChanged,
+            base::Unretained(this)));
+  }
+#endif  // BUILDFLAG(IS_MAC)
+
   back_ = AddChildView(std::make_unique<BackForwardButton>(
       BackForwardButton::Direction::kBack,
       base::BindRepeating(callback, browser_, IDC_BACK), browser_));
@@ -360,6 +388,7 @@ void ToolbarView::Init() {
   pinned_toolbar_actions_container_ = AddChildView(
       std::make_unique<PinnedToolbarActionsContainer>(browser_view_, this));
 
+#if !BUILDFLAG(IS_MAC)
   if (features::HasTabSearchToolbarButton()) {
     tab_search_button_ =
         pinned_toolbar_actions_container()->CreatePermanentButtonFor(
@@ -367,6 +396,7 @@ void ToolbarView::Init() {
     tab_search_button_->SetProperty(views::kElementIdentifierKey,
                                     kTabSearchButtonElementId);
   }
+#endif
 
   if (IsChromeLabsEnabled()) {
     UpdateChromeLabsNewBadgePrefs(browser_->profile());
@@ -1147,6 +1177,39 @@ void ToolbarView::OnChromeLabsPrefChanged() {
           ? IDS_ACCESSIBLE_TEXT_CHROMELABS_BUTTON_ADDED_BY_ENTERPRISE_POLICY
           : IDS_ACCESSIBLE_TEXT_CHROMELABS_BUTTON_REMOVED_BY_ENTERPRISE_POLICY));
 }
+
+#if BUILDFLAG(IS_MAC)
+void ToolbarView::OnVerticalTabStripCollapsedChanged(
+    tabs::VerticalTabStripStateController* controller) {
+  UpdateVerticalTabStripZenToggleVisibility();
+}
+
+void ToolbarView::UpdateVerticalTabStripZenToggleVisibility() {
+  if (!vertical_tab_strip_zen_toggle_button_) {
+    return;
+  }
+
+  auto* controller = tabs::VerticalTabStripStateController::From(browser_);
+  const bool should_show = controller && controller->ShouldDisplayVerticalTabs();
+  vertical_tab_strip_zen_toggle_button_->SetVisible(should_show);
+
+  if (controller) {
+    const gfx::VectorIcon& icon =
+        (controller->IsCollapsed() == base::i18n::IsRTL())
+            ? views::kMenuOpenIcon
+            : views::kMenuCloseIcon;
+    const int text_id = controller->IsCollapsed() ? IDS_EXPAND_VERTICAL_TABS
+                                                  : IDS_COLLAPSE_VERTICAL_TABS;
+    const auto text = l10n_util::GetStringUTF16(text_id);
+    vertical_tab_strip_zen_toggle_button_->SetVectorIcon(icon);
+    vertical_tab_strip_zen_toggle_button_->SetTooltipText(
+        BrowserActions::GetCleanTitleAndTooltipText(text));
+    vertical_tab_strip_zen_toggle_button_->GetViewAccessibility().SetName(text);
+  }
+
+  InvalidateLayout();
+}
+#endif  // BUILDFLAG(IS_MAC)
 
 void ToolbarView::LoadImages() {
   DCHECK_EQ(display_mode_, DisplayMode::kNormal);
