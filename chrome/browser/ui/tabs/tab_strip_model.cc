@@ -25,6 +25,7 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
@@ -52,7 +53,9 @@
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/bubble_anchor_util.h"
 #include "chrome/browser/ui/commerce/ui_utils.h"
+#include "chrome/browser/ui/page_info/page_info_dialog.h"
 #include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_bubble.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/features.h"
@@ -103,6 +106,7 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/reload_type.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host.h"
@@ -2464,6 +2468,15 @@ bool TabStripModel::IsContextMenuCommandEnabled(
     case CommandReload:
       return delegate_->CanReload();
 
+    case CommandViewSiteInfo: {
+      WebContents* tab = GetWebContentsAt(context_index);
+      if (!tab) {
+        return false;
+      }
+      content::NavigationEntry* entry = tab->GetController().GetVisibleEntry();
+      return entry && !entry->IsInitialEntry();
+    }
+
     case CommandCloseOtherTabs:
     case CommandCloseTabsToRight: {
       return !GetIndicesClosedByCommand(context_index, command_id).empty();
@@ -2615,6 +2628,16 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
           tab->GetController().Reload(content::ReloadType::NORMAL, true);
         }
       }
+      break;
+    }
+
+    case CommandViewSiteInfo: {
+      WebContents* tab = GetWebContentsAt(context_index);
+      if (!tab) {
+        break;
+      }
+      ShowPageInfoDialog(tab, base::DoNothing(),
+                         bubble_anchor_util::Anchor::kLocationBar);
       break;
     }
 

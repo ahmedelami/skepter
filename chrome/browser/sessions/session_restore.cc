@@ -1179,6 +1179,13 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       }
 
       if (extra_data.contains(
+              tabs::VerticalTabStripStateController::kZenHiddenKey)) {
+        params.vertical_tab_strip_zen_hidden =
+            extra_data.at(
+                tabs::VerticalTabStripStateController::kZenHiddenKey) == "true";
+      }
+
+      if (extra_data.contains(
               tabs::VerticalTabStripStateController::kUncollapsedWidthKey)) {
         int uncollapsed_width = 0;
         if (base::StringToInt(

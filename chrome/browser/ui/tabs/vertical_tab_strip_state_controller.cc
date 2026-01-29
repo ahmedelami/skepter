@@ -37,6 +37,7 @@ VerticalTabStripStateController::VerticalTabStripStateController(
     SessionService* session_service,
     SessionID session_id,
     std::optional<bool> restored_state_collapsed,
+    std::optional<bool> restored_state_zen_hidden,
     std::optional<int> restored_state_uncollapsed_width)
     : pref_service_(pref_service),
       root_action_item_(root_action_item),
@@ -54,6 +55,9 @@ VerticalTabStripStateController::VerticalTabStripStateController(
 
   if (restored_state_collapsed.has_value()) {
     SetCollapsed(restored_state_collapsed.value());
+  }
+  if (restored_state_zen_hidden.has_value()) {
+    SetZenHidden(restored_state_zen_hidden.value());
   }
   if (restored_state_uncollapsed_width.has_value()) {
     SetUncollapsedWidth(restored_state_uncollapsed_width.value());
@@ -116,6 +120,17 @@ void VerticalTabStripStateController::SetCollapsed(bool collapsed) {
   }
 }
 
+bool VerticalTabStripStateController::IsZenHidden() const {
+  return state_.zen_hidden;
+}
+
+void VerticalTabStripStateController::SetZenHidden(bool zen_hidden) {
+  if (state_.zen_hidden != zen_hidden) {
+    state_.zen_hidden = zen_hidden;
+    NotifyCollapseChanged();
+  }
+}
+
 int VerticalTabStripStateController::GetUncollapsedWidth() const {
   return state_.uncollapsed_width;
 }
@@ -130,6 +145,7 @@ void VerticalTabStripStateController::SetUncollapsedWidth(int width) {
 void VerticalTabStripStateController::SetState(
     const VerticalTabStripState& state) {
   if (state_.collapsed != state.collapsed ||
+      state_.zen_hidden != state.zen_hidden ||
       state_.uncollapsed_width != state.uncollapsed_width) {
     state_ = state;
     NotifyCollapseChanged();
@@ -162,6 +178,8 @@ void VerticalTabStripStateController::UpdateSessionService() {
   if (session_service_ && !browser_list_observation_.IsObserving()) {
     session_service_->AddWindowExtraData(session_id_, kCollapsedKey,
                                          base::ToString(state_.collapsed));
+    session_service_->AddWindowExtraData(session_id_, kZenHiddenKey,
+                                         base::ToString(state_.zen_hidden));
     session_service_->AddWindowExtraData(
         session_id_, kUncollapsedWidthKey,
         base::NumberToString(state_.uncollapsed_width));

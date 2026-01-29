@@ -15,12 +15,14 @@
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_flat_edge_button.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "chrome/grit/generated_resources.h"
+#include "build/build_config.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/views/actions/action_view_controller.h"
 #include "ui/views/controls/button/label_button_border.h"
 #include "ui/views/controls/button/menu_button_controller.h"
 #include "ui/views/layout/flex_layout_view.h"
+#include "ui/views/view.h"
 
 VerticalTabStripBottomContainer::VerticalTabStripBottomContainer(
     tabs::VerticalTabStripStateController* state_controller,
@@ -66,6 +68,19 @@ VerticalTabStripBottomContainer::VerticalTabStripBottomContainer(
                                      kSavedTabGroupButtonElementId);
     }
   }
+
+#if BUILDFLAG(IS_MAC)
+  if (button_set_ == ButtonSet::kTabGroupOnly) {
+    // Reserve space to place toolbar actions (profile + menu) to the right of
+    // the tab groups button.
+    skepter_trailing_spacer_ = AddChildView(std::make_unique<views::View>());
+    skepter_trailing_spacer_->SetProperty(
+        views::kFlexBehaviorKey,
+        views::FlexSpecification(views::LayoutOrientation::kHorizontal,
+                                 views::MinimumFlexSizeRule::kScaleToZero,
+                                 views::MaximumFlexSizeRule::kUnbounded));
+  }
+#endif
 
   if (button_set_ == ButtonSet::kNewTabAndTabGroup ||
       button_set_ == ButtonSet::kNewTabOnly) {
@@ -144,6 +159,12 @@ void VerticalTabStripBottomContainer::UpdateButtonStyles(
   // Setting button's layout based on collapsed state
   SetOrientation(orientation);
 
+#if BUILDFLAG(IS_MAC)
+  if (skepter_trailing_spacer_) {
+    skepter_trailing_spacer_->SetVisible(!is_collapsed);
+  }
+#endif
+
   // If collapsed, the tab group button and the new tab button share the same
   // weights. The flat edge is inverse to the position: tab group button is
   // placed on top so the flat edge is on the bottom.
@@ -160,10 +181,17 @@ void VerticalTabStripBottomContainer::UpdateButtonStyles(
     tab_group_button_->SetFlatEdge(
         is_collapsed ? VerticalTabStripFlatEdgeButton::FlatEdge::kBottom
                      : VerticalTabStripFlatEdgeButton::FlatEdge::kNone);
-    tab_group_button_->SetInsets(GetLayoutInsets(
+    gfx::Insets tab_group_insets = GetLayoutInsets(
         is_collapsed
             ? LayoutInset::VERTICAL_TAB_STRIP_BOTTOM_BUTTON_COLLAPSED
-            : LayoutInset::VERTICAL_TAB_STRIP_BOTTOM_BUTTON_UNCOLLAPSED));
+            : LayoutInset::VERTICAL_TAB_STRIP_BOTTOM_BUTTON_UNCOLLAPSED);
+    if (button_set_ == ButtonSet::kTabGroupOnly) {
+      const int vertical_padding =
+          (tab_group_insets.top() + tab_group_insets.bottom()) / 2;
+      tab_group_insets.set_left(vertical_padding);
+      tab_group_insets.set_right(vertical_padding);
+    }
+    tab_group_button_->SetInsets(tab_group_insets);
   }
 
   if (new_tab_button_) {

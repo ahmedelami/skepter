@@ -169,6 +169,11 @@ class ToolbarView : public views::AccessiblePaneView,
   PinnedActionToolbarButton* tab_search_button() const {
     return tab_search_button_;
   }
+#if BUILDFLAG(IS_MAC)
+  views::Button* tab_search_bubble_anchor_button() const {
+    return tab_search_bubble_anchor_button_;
+  }
+#endif  // BUILDFLAG(IS_MAC)
   AppMenuIconController* app_menu_icon_controller() {
     return &app_menu_icon_controller_;
   }
@@ -308,6 +313,7 @@ class ToolbarView : public views::AccessiblePaneView,
   raw_ptr<PinnedActionToolbarButton> tab_search_button_ = nullptr;
 
 #if BUILDFLAG(IS_MAC)
+  raw_ptr<ToolbarButton> tab_search_bubble_anchor_button_ = nullptr;
   raw_ptr<ToolbarButton> vertical_tab_strip_zen_toggle_button_ = nullptr;
   base::CallbackListSubscription vertical_tab_strip_collapse_subscription_;
   bool hide_navigation_buttons_for_vertical_tabs_ = false;

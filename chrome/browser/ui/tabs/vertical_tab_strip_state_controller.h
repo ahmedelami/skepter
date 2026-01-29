@@ -38,6 +38,7 @@ class VerticalTabStripStateController : public SessionServiceBaseObserver,
       SessionService* session_service,
       SessionID session_id,
       std::optional<bool> restored_state_collapsed,
+      std::optional<bool> restored_state_zen_hidden,
       std::optional<int> restored_state_uncollapsed_width);
   VerticalTabStripStateController(const VerticalTabStripStateController&) =
       delete;
@@ -56,6 +57,9 @@ class VerticalTabStripStateController : public SessionServiceBaseObserver,
   bool IsCollapsed() const;
   void SetCollapsed(bool collapsed);
 
+  bool IsZenHidden() const;
+  void SetZenHidden(bool zen_hidden);
+
   int GetUncollapsedWidth() const;
   void SetUncollapsedWidth(int width);
 
@@ -70,6 +74,7 @@ class VerticalTabStripStateController : public SessionServiceBaseObserver,
       StateChangedCallback callback);
 
   static constexpr char kCollapsedKey[] = "vertical_tab_strip_collapsed";
+  static constexpr char kZenHiddenKey[] = "vertical_tab_strip_zen_hidden";
   static constexpr char kUncollapsedWidthKey[] =
       "vertical_tab_strip_uncollapsed_width";
 

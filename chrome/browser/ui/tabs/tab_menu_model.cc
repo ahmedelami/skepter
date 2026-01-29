@@ -265,6 +265,7 @@ void TabMenuModel::Build(TabStripModel* tab_strip, int index) {
 
   AddSeparator(ui::NORMAL_SEPARATOR);
   AddItemWithStringId(TabStripModel::CommandReload, IDS_TAB_CXMENU_RELOAD);
+  AddItem(TabStripModel::CommandViewSiteInfo, u"View site info");
 
   AddItemWithStringId(TabStripModel::CommandDuplicate,
                       IDS_TAB_CXMENU_DUPLICATE);

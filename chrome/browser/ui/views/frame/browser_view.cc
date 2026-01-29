@@ -667,6 +667,15 @@ namespace {
 // treated as clicks to the frame, rather than clicks to the tab.
 const int kTabShadowSize = 2;
 
+#if BUILDFLAG(IS_MAC)
+bool ShouldHideSkepterTopToolbar(const Browser* browser) {
+  auto* const vertical_tab_strip_state_controller =
+      tabs::VerticalTabStripStateController::From(browser);
+  return vertical_tab_strip_state_controller &&
+         vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs();
+}
+#endif  // BUILDFLAG(IS_MAC)
+
 #if BUILDFLAG(IS_CHROMEOS)
 // UMA histograms that record animation smoothness for tab loading animation.
 constexpr char kTabLoadingSmoothnessHistogramName[] =
@@ -3356,6 +3365,10 @@ void BrowserView::DisableTabStripEditingForTesting() {
 
 bool BrowserView::IsToolbarVisible() const {
 #if BUILDFLAG(IS_MAC)
+  if (ShouldHideSkepterTopToolbar(browser())) {
+    return false;
+  }
+
   // Immersive full screen makes it possible to display the toolbar when
   // kShowFullscreenToolbar is not set.
   if (!UsesImmersiveFullscreenMode()) {
@@ -4847,9 +4860,9 @@ void BrowserView::UpdateTabSearchBubbleHost() {
     // bubble to the vertical tabs collapse button, since TabSearchBubbleHost
     // installs a MenuButtonController on the anchor and would make the collapse
     // button open the Tab Search bubble.
-    if (toolbar_) {
+    if (toolbar_ && toolbar_->tab_search_bubble_anchor_button()) {
       tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
-          toolbar_->app_menu_button(), browser_.get());
+          toolbar_->tab_search_bubble_anchor_button(), browser_.get());
     }
     return;
 #else
@@ -4861,9 +4874,9 @@ void BrowserView::UpdateTabSearchBubbleHost() {
 #if BUILDFLAG(IS_MAC)
     // Tab search entry points are hidden on macOS; anchor the bubble to an
     // existing toolbar button instead.
-    if (toolbar_) {
+    if (toolbar_ && toolbar_->tab_search_bubble_anchor_button()) {
       tab_search_bubble_host_ = std::make_unique<TabSearchBubbleHost>(
-          toolbar_->app_menu_button(), browser_.get());
+          toolbar_->tab_search_bubble_anchor_button(), browser_.get());
     }
     return;
 #else
@@ -5415,8 +5428,16 @@ void BrowserView::Layout(PassKey) {
   LayoutSuperclass<views::View>(this);
 
   // TODO(jamescook): Why was this in the middle of layout code?
+  bool omnibox_focusable = IsToolbarVisible();
+#if BUILDFLAG(IS_MAC)
+  // Skepter uses a centered omnibox popup when vertical tabs are enabled, so
+  // the omnibox should remain focusable even if the top toolbar is hidden.
+  if (!omnibox_focusable && ShouldHideSkepterTopToolbar(browser())) {
+    omnibox_focusable = true;
+  }
+#endif  // BUILDFLAG(IS_MAC)
   toolbar_->location_bar_view()->omnibox_view()->SetFocusBehavior(
-      IsToolbarVisible() ? FocusBehavior::ALWAYS : FocusBehavior::NEVER);
+      omnibox_focusable ? FocusBehavior::ALWAYS : FocusBehavior::NEVER);
   GetFrameView()->UpdateMinimumSize();
 
   // Some of the situations when the BrowserView is laid out are:

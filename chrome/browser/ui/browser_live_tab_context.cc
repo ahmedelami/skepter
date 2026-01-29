@@ -166,6 +166,8 @@ BrowserLiveTabContext::GetExtraDataForWindow() const {
   if (controller) {
     data[tabs::VerticalTabStripStateController::kCollapsedKey] =
         base::ToString(controller->IsCollapsed());
+    data[tabs::VerticalTabStripStateController::kZenHiddenKey] =
+        base::ToString(controller->IsZenHidden());
     data[tabs::VerticalTabStripStateController::kUncollapsedWidthKey] =
         base::NumberToString(controller->GetUncollapsedWidth());
   }
@@ -407,6 +409,13 @@ sessions::LiveTabContext* BrowserLiveTabContext::Create(
             tabs::VerticalTabStripStateController::kCollapsedKey)) {
       create_params->vertical_tab_strip_collapsed =
           extra_data.at(tabs::VerticalTabStripStateController::kCollapsedKey) ==
+          "true";
+    }
+
+    if (extra_data.contains(
+            tabs::VerticalTabStripStateController::kZenHiddenKey)) {
+      create_params->vertical_tab_strip_zen_hidden =
+          extra_data.at(tabs::VerticalTabStripStateController::kZenHiddenKey) ==
           "true";
     }
 

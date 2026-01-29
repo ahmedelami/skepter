@@ -475,6 +475,17 @@ void ToolbarView::Init() {
   app_menu_button->SetID(VIEW_ID_APP_MENU);
   app_menu_button_ = AddChildView(std::move(app_menu_button));
 
+#if BUILDFLAG(IS_MAC)
+  // Tab search entry points are hidden on macOS, but the TabSearchBubbleHost
+  // still needs an anchor for keyboard-triggered opens. Use a hidden dedicated
+  // button so we don't override real button controllers (e.g. the app menu).
+  tab_search_bubble_anchor_button_ =
+      AddChildView(std::make_unique<ToolbarButton>());
+  tab_search_bubble_anchor_button_->SetVisible(false);
+  tab_search_bubble_anchor_button_->SetProperty(views::kViewIgnoredByLayoutKey,
+                                                true);
+#endif  // BUILDFLAG(IS_MAC)
+
   LoadImages();
 
   // Set the button icon based on the system state. Do this after
@@ -955,29 +966,33 @@ void ToolbarView::LayoutCommon() {
                           : LayoutInset::TOOLBAR_INTERIOR_MARGIN);
 
   if (!browser_view_->webui_tab_strip()) {
-    if (app_menu_button_->IsLabelPresentAndVisible()) {
-      // The interior margin in an expanded state should be more than in a
-      // collapsed state.
-      interior_margin.set_right(interior_margin.right() + 1);
-      app_menu_button_->SetProperty(
-          views::kMarginsKey,
-          gfx::Insets::VH(0, kBrowserAppMenuRefreshExpandedMargin));
-    } else {
-      app_menu_button_->SetProperty(
-          views::kMarginsKey,
-          gfx::Insets::VH(0, kBrowserAppMenuRefreshCollapsedMargin));
+    if (app_menu_button_->parent() == this) {
+      if (app_menu_button_->IsLabelPresentAndVisible()) {
+        // The interior margin in an expanded state should be more than in a
+        // collapsed state.
+        interior_margin.set_right(interior_margin.right() + 1);
+        app_menu_button_->SetProperty(
+            views::kMarginsKey,
+            gfx::Insets::VH(0, kBrowserAppMenuRefreshExpandedMargin));
+      } else {
+        app_menu_button_->SetProperty(
+            views::kMarginsKey,
+            gfx::Insets::VH(0, kBrowserAppMenuRefreshCollapsedMargin));
+      }
     }
 
     // The margins of the `avatar_` uses the same constants as the
     // `app_menu_button_`.
-    if (avatar_->IsLabelPresentAndVisible()) {
-      avatar_->SetProperty(
-          views::kMarginsKey,
-          gfx::Insets::VH(0, kBrowserAppMenuRefreshExpandedMargin));
-    } else {
-      avatar_->SetProperty(
-          views::kMarginsKey,
-          gfx::Insets::VH(0, kBrowserAppMenuRefreshCollapsedMargin));
+    if (avatar_->parent() == this) {
+      if (avatar_->IsLabelPresentAndVisible()) {
+        avatar_->SetProperty(
+            views::kMarginsKey,
+            gfx::Insets::VH(0, kBrowserAppMenuRefreshExpandedMargin));
+      } else {
+        avatar_->SetProperty(
+            views::kMarginsKey,
+            gfx::Insets::VH(0, kBrowserAppMenuRefreshCollapsedMargin));
+      }
     }
   }
 
@@ -989,8 +1004,10 @@ void ToolbarView::LayoutCommon() {
       browser_->window() &&
       (browser_->window()->IsMaximized() || browser_->window()->IsFullscreen());
   back_->SetLeadingMargin(extend_buttons_to_edge ? interior_margin.left() : 0);
-  app_menu_button_->SetTrailingMargin(
-      extend_buttons_to_edge ? interior_margin.right() : 0);
+  if (app_menu_button_->parent() == this) {
+    app_menu_button_->SetTrailingMargin(
+        extend_buttons_to_edge ? interior_margin.right() : 0);
+  }
 
   if (toolbar_divider_ && extensions_container_) {
     views::ManualLayoutUtil(layout_manager_)

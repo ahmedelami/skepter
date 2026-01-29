@@ -690,7 +690,7 @@ void BrowserActions::InitializeBrowserActions() {
           .SetTooltipText(BrowserActions::GetCleanTitleAndTooltipText(
               l10n_util::GetStringUTF16(IDS_SAVED_TAB_GROUPS_MENU)))
           .SetImage(ui::ImageModel::FromVectorIcon(
-              kSavedTabGroupBarEverythingIcon, ui::kColorIcon))
+              kTabGroupIcon, ui::kColorIcon))
           .Build());
 
   root_action_item_->AddChild(

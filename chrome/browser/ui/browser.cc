@@ -597,6 +597,8 @@ Browser::Browser(const CreateParams& params)
       user_title_(params.user_title),
       initial_vertical_tab_strip_collapsed_(
           params.vertical_tab_strip_collapsed),
+      initial_vertical_tab_strip_zen_hidden_(
+          params.vertical_tab_strip_zen_hidden),
       initial_vertical_tab_strip_uncollapsed_width_(
           params.vertical_tab_strip_uncollapsed_width) {
   if (!profile_->IsOffTheRecord()) {

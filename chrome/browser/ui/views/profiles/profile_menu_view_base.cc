@@ -320,6 +320,30 @@ ProfileMenuViewBase::ProfileMenuViewBase(ui::TrackedElement* anchor_element,
         ->AnimateToState(views::InkDropState::ACTIVATED, nullptr);
   }
 
+  // Prefer showing the profile menu on the side of the anchor with the most
+  // available work-area space. This is particularly important when the anchor
+  // is positioned near the bottom of the window (e.g. when UI is customized to
+  // place the avatar button in a bottom sidebar).
+  const gfx::Rect anchor_rect = GetAnchorRect();
+  if (!anchor_rect.IsEmpty()) {
+    const gfx::Rect screen_space =
+        display::Screen::Get()
+            ->GetDisplayNearestPoint(anchor_rect.CenterPoint())
+            .work_area();
+    const int space_above = anchor_rect.y() - screen_space.y();
+    const int space_below = screen_space.bottom() - anchor_rect.bottom();
+    const bool show_above = space_above > space_below;
+    const bool anchor_on_left =
+        anchor_rect.CenterPoint().x() < screen_space.CenterPoint().x();
+    const views::BubbleBorder::Arrow arrow =
+        show_above
+            ? (anchor_on_left ? views::BubbleBorder::BOTTOM_LEFT
+                              : views::BubbleBorder::BOTTOM_RIGHT)
+            : (anchor_on_left ? views::BubbleBorder::TOP_LEFT
+                              : views::BubbleBorder::TOP_RIGHT);
+    SetArrowWithoutResizing(arrow);
+  }
+
   SetEnableArrowKeyTraversal(true);
 
   // TODO(crbug.com/40230528): Using `SetAccessibleWindowRole(kMenu)` here will
@@ -667,12 +691,9 @@ int ProfileMenuViewBase::GetMaxHeight() const {
       display::Screen::Get()
           ->GetDisplayNearestPoint(anchor_rect.CenterPoint())
           .work_area();
-  int available_space = screen_space.bottom() - anchor_rect.bottom();
-#if BUILDFLAG(IS_WIN)
-  // On Windows the bubble can also be show to the top of the anchor.
-  available_space =
-      std::max(available_space, anchor_rect.y() - screen_space.y());
-#endif
+  int available_space =
+      std::max(screen_space.bottom() - anchor_rect.bottom(),
+               anchor_rect.y() - screen_space.y());
   return std::max(kMinimumScrollableContentHeight, available_space);
 }
 

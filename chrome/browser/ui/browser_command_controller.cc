@@ -73,6 +73,7 @@
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -733,6 +734,14 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
 
     // Page-related commands
     case IDC_SAVE_PAGE:
+#if BUILDFLAG(IS_MAC)
+      if (auto* controller =
+              tabs::VerticalTabStripStateController::From(browser_);
+          controller && controller->ShouldDisplayVerticalTabs()) {
+        controller->SetZenHidden(!controller->IsZenHidden());
+        break;
+      }
+#endif  // BUILDFLAG(IS_MAC)
       SavePage(browser_);
       break;
     case IDC_BOOKMARK_THIS_TAB:
@@ -2239,6 +2248,14 @@ void BrowserCommandController::UpdateSaveAsState() {
   if (is_locked_fullscreen_) {
     return;
   }
+
+#if BUILDFLAG(IS_MAC)
+  if (auto* controller = tabs::VerticalTabStripStateController::From(browser_);
+      controller && controller->ShouldDisplayVerticalTabs()) {
+    command_updater_.UpdateCommandEnabled(IDC_SAVE_PAGE, true);
+    return;
+  }
+#endif  // BUILDFLAG(IS_MAC)
 
   command_updater_.UpdateCommandEnabled(IDC_SAVE_PAGE, CanSavePage(browser_));
 }

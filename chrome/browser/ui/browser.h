@@ -315,6 +315,8 @@ class Browser : public TabStripModelObserver,
     // Specifies the collapsed state for the Vertical Tab Strip. True if the
     // browser is collapsed.
     std::optional<bool> vertical_tab_strip_collapsed;
+    // Specifies whether the Vertical Tab Strip is fully hidden ("zen mode").
+    std::optional<bool> vertical_tab_strip_zen_hidden;
     // Specifies the width for the uncollapsed Vertical Tab Strip.
     std::optional<int> vertical_tab_strip_uncollapsed_width;
 
@@ -418,6 +420,9 @@ class Browser : public TabStripModelObserver,
   const std::string& user_title() const { return user_title_; }
   std::optional<bool> is_vertical_tabs_initially_collapsed() const {
     return initial_vertical_tab_strip_collapsed_;
+  }
+  std::optional<bool> is_vertical_tabs_initially_zen_hidden() const {
+    return initial_vertical_tab_strip_zen_hidden_;
   }
   std::optional<int> get_vertical_tabs_initial_uncollapsed_width() const {
     return initial_vertical_tab_strip_uncollapsed_width_;
@@ -1335,6 +1340,7 @@ class Browser : public TabStripModelObserver,
   std::string user_title_;
 
   std::optional<bool> initial_vertical_tab_strip_collapsed_;
+  std::optional<bool> initial_vertical_tab_strip_zen_hidden_;
   std::optional<int> initial_vertical_tab_strip_uncollapsed_width_;
 
   std::unique_ptr<ScopedKeepAlive> keep_alive_;

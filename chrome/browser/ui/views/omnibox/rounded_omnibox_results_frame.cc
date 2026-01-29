@@ -56,8 +56,14 @@ views::Widget* GetImmersiveFullscreenWidgetForEvent(
     views::View* this_view,
     const ui::MouseEvent* this_event) {
   const views::Widget* parent_widget = this_view->GetWidget()->parent();
+  if (!parent_widget) {
+    return nullptr;
+  }
   BrowserView* browser_view = BrowserView::GetBrowserViewForNativeWindow(
       parent_widget->GetNativeWindow());
+  if (!browser_view) {
+    return nullptr;
+  }
 
   // If the results window is not a child of the overlay widget we are not in
   // immersive fullscreen.

@@ -13,6 +13,8 @@ inline constexpr int kVerticalTabStripDefaultUncollapsedWidth = 240;
 struct VerticalTabStripState {
   // Whether the vertical tab strip is collapsed.
   bool collapsed = false;
+  // Whether the vertical tab strip is fully hidden ("zen mode").
+  bool zen_hidden = false;
   // The width of the vertical tab strip when it is not collapsed.
   int uncollapsed_width = kVerticalTabStripDefaultUncollapsedWidth;
 };

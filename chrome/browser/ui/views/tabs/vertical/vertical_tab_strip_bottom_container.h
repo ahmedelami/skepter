@@ -23,6 +23,7 @@ class STGEverythingMenu;
 namespace views {
 class ActionViewController;
 class MenuButtonController;
+class View;
 }  // namespace views
 
 // Bottom container of the vertical tab strip, manages the new tab and tab group
@@ -66,6 +67,7 @@ class VerticalTabStripBottomContainer : public views::FlexLayoutView {
   const ButtonSet button_set_;
   raw_ptr<VerticalTabStripFlatEdgeButton> new_tab_button_ = nullptr;
   raw_ptr<VerticalTabStripFlatEdgeButton> tab_group_button_ = nullptr;
+  raw_ptr<views::View> skepter_trailing_spacer_ = nullptr;
   raw_ptr<BrowserWindowInterface> browser_ = nullptr;
   raw_ptr<views::MenuButtonController> everything_menu_controller_ = nullptr;
   base::CallbackListSubscription collapsed_state_changed_subscription_;

@@ -26,9 +26,14 @@
 #include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_service_feature.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/app_menu_button.h"
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
+#include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
+#include "chrome/browser/ui/views/page_info/page_info_bubble_specification.h"
+#include "chrome/browser/ui/views/page_info/page_info_bubble_view.h"
+#include "chrome/browser/ui/views/profiles/avatar_toolbar_button.h"
 #include "chrome/browser/ui/views/tabs/vertical/root_tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/vertical/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_pinned_tab_container_view.h"
@@ -59,6 +64,7 @@
 #include "ui/views/controls/resize_area.h"
 #include "ui/views/controls/scroll_view.h"
 #include "ui/views/controls/separator.h"
+#include "ui/views/bubble/bubble_border.h"
 #include "ui/views/layout/flex_layout.h"
 #include "ui/views/layout/flex_layout_types.h"
 #include "ui/views/layout/layout_types.h"
@@ -69,6 +75,12 @@
 
 namespace {
 constexpr int kRegionVerticalPadding = 5;
+constexpr bool kSkepterShowSidebarUrlRow = false;
+#if BUILDFLAG(IS_MAC)
+constexpr bool kSkepterShowSidebarNewTabButton = false;
+#else
+constexpr bool kSkepterShowSidebarNewTabButton = true;
+#endif
 
 const url_formatter::FormatUrlType kUrlFormatFlags =
     url_formatter::kFormatUrlOmitDefaults |
@@ -111,14 +123,44 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
       AddChildView(std::make_unique<VerticalTabStripTopContainer>(
           state_controller_, root_action_item, browser_view->browser()));
 
+  url_row_container_ = AddChildView(std::make_unique<views::View>());
+  auto* url_row_layout =
+      url_row_container_->SetLayoutManager(std::make_unique<views::FlexLayout>());
+  url_row_layout->SetOrientation(views::LayoutOrientation::kHorizontal)
+      .SetCollapseMargins(true)
+      .SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
+
+  url_row_page_info_button_ =
+      url_row_container_->AddChildView(std::make_unique<VerticalTabStripFlatEdgeButton>());
+  url_row_page_info_button_->SetCallback(base::BindRepeating(
+      &VerticalTabStripRegionView::OnUrlRowPageInfoPressed,
+      base::Unretained(this)));
+  url_row_page_info_button_->SetText(std::u16string());
+  url_row_page_info_button_->SetTooltipText(u"Page info");
+  url_row_page_info_button_->SetFlatEdge(
+      VerticalTabStripFlatEdgeButton::FlatEdge::kRight);
+  const gfx::Insets url_row_insets = GetLayoutInsets(
+      LayoutInset::VERTICAL_TAB_STRIP_BOTTOM_BUTTON_UNCOLLAPSED);
+  constexpr int kUrlRowInnerPadding = 6;
+  url_row_page_info_button_->SetInsets(gfx::Insets::TLBR(
+      url_row_insets.top(), url_row_insets.left(), url_row_insets.bottom(),
+      kUrlRowInnerPadding));
+
   url_row_button_ =
-      AddChildView(std::make_unique<VerticalTabStripFlatEdgeButton>());
+      url_row_container_->AddChildView(std::make_unique<VerticalTabStripFlatEdgeButton>());
   url_row_button_->SetCallback(base::BindRepeating(
       &VerticalTabStripRegionView::OnUrlRowPressed, base::Unretained(this)));
   url_row_button_->SetHorizontalAlignment(gfx::HorizontalAlignment::ALIGN_LEFT);
   url_row_button_->SetElideBehavior(gfx::ElideBehavior::ELIDE_TAIL);
-  url_row_button_->SetInsets(GetLayoutInsets(
-      LayoutInset::VERTICAL_TAB_STRIP_BOTTOM_BUTTON_UNCOLLAPSED));
+  url_row_button_->SetInsets(gfx::Insets::TLBR(
+      url_row_insets.top(), kUrlRowInnerPadding, url_row_insets.bottom(),
+      url_row_insets.right()));
+  url_row_button_->SetFlatEdge(VerticalTabStripFlatEdgeButton::FlatEdge::kLeft);
+  url_row_button_->SetProperty(
+      views::kFlexBehaviorKey,
+      views::FlexSpecification(views::LayoutOrientation::kHorizontal,
+                               views::MinimumFlexSizeRule::kScaleToZero,
+                               views::MaximumFlexSizeRule::kUnbounded));
 
   top_button_separator_ = AddChildView(std::make_unique<views::Separator>());
 
@@ -126,6 +168,7 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
       AddChildView(std::make_unique<VerticalTabStripBottomContainer>(
           state_controller_, root_action_item, browser_view->browser(),
           VerticalTabStripBottomContainer::ButtonSet::kNewTabOnly));
+  new_tab_button_container_->SetVisible(kSkepterShowSidebarNewTabButton);
 
   bottom_button_container_ =
       AddChildView(std::make_unique<VerticalTabStripBottomContainer>(
@@ -189,6 +232,8 @@ void VerticalTabStripRegionView::AddedToWidget() {
           &VerticalTabStripRegionView::UpdateColors, base::Unretained(this)));
 
   UpdateUrlRow(browser_view_ ? browser_view_->GetActiveWebContents() : nullptr);
+
+  MaybeMoveProfileAndAppMenuButtons();
 }
 
 void VerticalTabStripRegionView::Layout(PassKey) {
@@ -273,6 +318,10 @@ void VerticalTabStripRegionView::ResetTabStrip() {
 
 gfx::Size VerticalTabStripRegionView::GetMinimumSize() const {
   auto min_size = TabStripRegionView::GetMinimumSize();
+  if (state_controller_->IsZenHidden() || starting_width_on_resize_.has_value()) {
+    min_size.set_width(kZenHiddenWidth);
+    return min_size;
+  }
   min_size.set_width(
       (state_controller_->IsCollapsed() || resize_animation_.is_animating())
           ? kCollapsedWidth
@@ -283,6 +332,10 @@ gfx::Size VerticalTabStripRegionView::GetMinimumSize() const {
 gfx::Size VerticalTabStripRegionView::CalculatePreferredSize(
     const views::SizeBounds& available_size) const {
   auto size = TabStripRegionView::CalculatePreferredSize(available_size);
+  if (target_collapse_state_.zen_hidden) {
+    size.set_width(kZenHiddenWidth);
+    return size;
+  }
   if (resize_animation_.is_animating()) {
     size.set_width(kCollapsedWidth +
                    base::ClampRound((target_collapse_state_.uncollapsed_width -
@@ -438,13 +491,14 @@ views::View* VerticalTabStripRegionView::GetTabStripView() {
 }
 
 void VerticalTabStripRegionView::UpdateUrlRow(content::WebContents* contents) {
-  if (!url_row_button_) {
+  if (!url_row_button_ || !url_row_page_info_button_) {
     return;
   }
 
   if (!contents) {
     url_row_button_->SetText(std::u16string());
     url_row_button_->SetTooltipText(std::u16string());
+    url_row_page_info_button_->SetTooltipText(std::u16string());
     return;
   }
 
@@ -453,7 +507,7 @@ void VerticalTabStripRegionView::UpdateUrlRow(content::WebContents* contents) {
     LocationBarModel* const model =
         location_bar ? location_bar->GetLocationBarModel() : nullptr;
     if (model) {
-      url_row_button_->UpdateIcon(
+      url_row_page_info_button_->UpdateIcon(
           ui::ImageModel::FromVectorIcon(model->GetVectorIcon()));
       const std::u16string display_text = model->GetURLForDisplay();
       if (!display_text.empty()) {
@@ -472,7 +526,7 @@ void VerticalTabStripRegionView::UpdateUrlRow(content::WebContents* contents) {
 
   std::u16string display_text;
   if (!url.is_valid() || url.is_empty() || IsNewTabPageUrl(url)) {
-    display_text = l10n_util::GetStringUTF16(IDS_NEW_TAB);
+    display_text = u"Type in here";
   } else if (url.SchemeIsFile()) {
     display_text = l10n_util::GetStringUTF16(IDS_HOVER_CARD_FILE_URL_SOURCE);
   } else if (url.SchemeIsBlob()) {
@@ -503,6 +557,46 @@ void VerticalTabStripRegionView::OnUrlRowPressed() {
                                 /*is_user_initiated=*/true));
 }
 
+void VerticalTabStripRegionView::OnUrlRowPageInfoPressed() {
+  if (!browser_view_ || !url_row_page_info_button_) {
+    return;
+  }
+
+  content::WebContents* const web_contents = browser_view_->GetActiveWebContents();
+  if (!web_contents) {
+    return;
+  }
+
+  gfx::NativeWindow parent_window;
+  if (browser_view_->GetWidget()) {
+    parent_window = browser_view_->GetWidget()->GetNativeWindow();
+  }
+  if (!parent_window) {
+    return;
+  }
+
+  GURL url;
+  if (LocationBarView* const location_bar = browser_view_->GetLocationBarView()) {
+    if (LocationBarModel* const model = location_bar->GetLocationBarModel()) {
+      url = model->GetURL();
+    }
+  }
+  if (!url.is_valid()) {
+    url = web_contents->GetVisibleURL();
+  }
+
+  PageInfoBubbleSpecification::Builder builder(url_row_page_info_button_,
+                                               parent_window, web_contents,
+                                               url);
+  views::BubbleDialogDelegateView* const bubble =
+      PageInfoBubbleView::CreatePageInfoBubble(builder.Build());
+  if (!bubble || !bubble->GetWidget()) {
+    return;
+  }
+  bubble->SetArrow(views::BubbleBorder::LEFT_TOP);
+  bubble->GetWidget()->Show();
+}
+
 void VerticalTabStripRegionView::OnResize(int resize_amount,
                                           bool done_resizing) {
   if (!starting_width_on_resize_.has_value()) {
@@ -514,6 +608,7 @@ void VerticalTabStripRegionView::OnResize(int resize_amount,
   }
 
   tabs::VerticalTabStripState new_state;
+  new_state.zen_hidden = proposed_width < kZenHiddenSnapWidth;
   if (proposed_width > kCollapseSnapWidth) {
     new_state.collapsed = false;
     new_state.uncollapsed_width =
@@ -537,6 +632,9 @@ void VerticalTabStripRegionView::OnResize(int resize_amount,
 void VerticalTabStripRegionView::AnimationProgressed(
     const gfx::Animation* animation) {
   DCHECK_EQ(animation, &resize_animation_);
+  if (target_collapse_state_.zen_hidden) {
+    return;
+  }
   double width = kCollapsedWidth +
                  (target_collapse_state_.uncollapsed_width - kCollapsedWidth) *
                      resize_animation_.GetCurrentValue();
@@ -629,13 +727,14 @@ void VerticalTabStripRegionView::ClearTabStripView(views::View* view) {
 
 void VerticalTabStripRegionView::OnCollapsedStateChanged(
     tabs::VerticalTabStripStateController* state_controller) {
-#if BUILDFLAG(IS_MAC)
-  // macOS "zen mode": fully hide the sidebar when collapsed.
-  const bool zen_hidden = state_controller->IsCollapsed();
+  const bool zen_hidden = state_controller->IsZenHidden();
   top_button_container_->SetVisible(!zen_hidden);
-  url_row_button_->SetVisible(!zen_hidden);
   top_button_separator_->SetVisible(!zen_hidden);
-  new_tab_button_container_->SetVisible(!zen_hidden);
+  const bool show_url_row = kSkepterShowSidebarUrlRow && !zen_hidden &&
+                            !state_controller->IsCollapsed();
+  url_row_container_->SetVisible(show_url_row);
+  new_tab_button_container_->SetVisible(kSkepterShowSidebarNewTabButton &&
+                                        !zen_hidden);
   bottom_button_container_->SetVisible(!zen_hidden);
   gemini_button_->SetVisible(!zen_hidden);
   if (tab_strip_view_) {
@@ -644,12 +743,11 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
   if (drag_handler_) {
     drag_handler_->GetDragContext()->SetVisible(!zen_hidden);
   }
-#endif
-#if !BUILDFLAG(IS_MAC)
-  url_row_button_->SetVisible(!state_controller->IsCollapsed());
-#endif
 
-  if (target_collapse_state_.collapsed != state_controller->IsCollapsed()) {
+  UpdateSkepterProfileAndAppMenuVisibility();
+
+  if (target_collapse_state_.collapsed != state_controller->IsCollapsed() ||
+      target_collapse_state_.zen_hidden != state_controller->IsZenHidden()) {
     // UpdateCollapseState is responsible for setting the collapsed state of the
     // state controller due to a resizing operation. To avoid reentrancy in that
     // case, only update the collapse state if the state controller's collapse
@@ -681,8 +779,8 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
                                        gfx::Insets::VH(0, padding));
   }
 
-  url_row_button_->SetProperty(views::kMarginsKey,
-                               gfx::Insets::TLBR(0, padding, 0, padding));
+  url_row_container_->SetProperty(views::kMarginsKey,
+                                  gfx::Insets::TLBR(0, padding, 0, padding));
 
   new_tab_button_container_->SetProperty(
       views::kMarginsKey,
@@ -705,7 +803,15 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
 void VerticalTabStripRegionView::UpdateCollapseState(
     tabs::VerticalTabStripState new_state) {
   bool previously_collapsed = target_collapse_state_.collapsed;
+  bool previously_zen_hidden = target_collapse_state_.zen_hidden;
   target_collapse_state_ = new_state;
+  if (previously_zen_hidden != target_collapse_state_.zen_hidden) {
+    if (target_collapse_state_.zen_hidden && resize_animation_.is_animating()) {
+      resize_animation_.Stop();
+    }
+    state_controller_->SetZenHidden(target_collapse_state_.zen_hidden);
+    InvalidateLayout();
+  }
   if (previously_collapsed != target_collapse_state_.collapsed) {
     if (target_collapse_state_.collapsed) {
       resize_animation_.Hide();
@@ -716,6 +822,7 @@ void VerticalTabStripRegionView::UpdateCollapseState(
     // This may change the minimum size of the top container.
     InvalidateLayout();
   } else if (!target_collapse_state_.collapsed &&
+             !target_collapse_state_.zen_hidden &&
              !resize_animation_.is_animating()) {
     // If we are still in the expanding animation, resizing to the updated
     // uncollapsed width will happen in AnimationProgressed, instead of here.
@@ -734,6 +841,103 @@ void VerticalTabStripRegionView::ResizeToWidth(int width) {
   }
 
   InvalidateLayout();
+}
+
+void VerticalTabStripRegionView::MaybeMoveProfileAndAppMenuButtons() {
+#if BUILDFLAG(IS_MAC)
+  if (skepter_moved_profile_and_menu_buttons_) {
+    return;
+  }
+
+  constexpr int kMaxAttempts = 25;
+  if (skepter_move_profile_and_menu_attempts_ >= kMaxAttempts) {
+    return;
+  }
+  skepter_move_profile_and_menu_attempts_++;
+
+  if (!browser_view_ || !bottom_button_container_) {
+    return;
+  }
+
+  ToolbarButtonProvider* const button_provider =
+      browser_view_->toolbar_button_provider();
+  if (!button_provider) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            &VerticalTabStripRegionView::MaybeMoveProfileAndAppMenuButtons,
+            weak_ptr_factory_.GetWeakPtr()));
+    return;
+  }
+
+  auto* const avatar_button = button_provider->GetAvatarToolbarButton();
+  auto* const app_menu_button = button_provider->GetAppMenuButton();
+  if (!avatar_button || !app_menu_button) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            &VerticalTabStripRegionView::MaybeMoveProfileAndAppMenuButtons,
+            weak_ptr_factory_.GetWeakPtr()));
+    return;
+  }
+
+  skepter_profile_button_ = avatar_button;
+  skepter_app_menu_button_ = app_menu_button;
+
+  if (avatar_button->parent() == bottom_button_container_ &&
+      app_menu_button->parent() == bottom_button_container_) {
+    skepter_moved_profile_and_menu_buttons_ = true;
+    UpdateSkepterProfileAndAppMenuVisibility();
+    return;
+  }
+
+  auto move_view_into_bottom_container = [this](views::View* view) {
+    if (!view || view->parent() == bottom_button_container_) {
+      return;
+    }
+    views::View* const parent = view->parent();
+    if (!parent) {
+      return;
+    }
+    bottom_button_container_->AddChildView(parent->RemoveChildViewT(view));
+    view->SetProperty(views::kMarginsKey, gfx::Insets());
+    view->ClearProperty(views::kFlexBehaviorKey);
+    view->SetVisible(true);
+  };
+
+  // Order matters: profile button should be left of the app menu (3 dots).
+  move_view_into_bottom_container(avatar_button);
+  move_view_into_bottom_container(app_menu_button);
+
+  if (avatar_button->parent() == bottom_button_container_ &&
+      app_menu_button->parent() == bottom_button_container_) {
+    skepter_moved_profile_and_menu_buttons_ = true;
+    UpdateSkepterProfileAndAppMenuVisibility();
+  } else {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            &VerticalTabStripRegionView::MaybeMoveProfileAndAppMenuButtons,
+            weak_ptr_factory_.GetWeakPtr()));
+  }
+#endif
+}
+
+void VerticalTabStripRegionView::UpdateSkepterProfileAndAppMenuVisibility() {
+#if BUILDFLAG(IS_MAC)
+  if (!skepter_moved_profile_and_menu_buttons_) {
+    return;
+  }
+
+  const bool should_show =
+      !state_controller_->IsCollapsed() && !state_controller_->IsZenHidden();
+  if (skepter_profile_button_) {
+    skepter_profile_button_->SetVisible(should_show);
+  }
+  if (skepter_app_menu_button_) {
+    skepter_app_menu_button_->SetVisible(should_show);
+  }
+#endif
 }
 
 void VerticalTabStripRegionView::UpdateColors() {
