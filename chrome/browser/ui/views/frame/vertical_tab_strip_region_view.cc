@@ -743,12 +743,13 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
     tabs::VerticalTabStripStateController* state_controller) {
   const bool zen_hidden = state_controller->IsZenHidden();
   if (kSkepterSidebarTabsOnly) {
-    // Tabs-only sidebar: never show other controls.
+    // Tabs-only sidebar: hide top controls; keep the bottom profile + app menu.
     top_button_container_->SetVisible(false);
     top_button_separator_->SetVisible(false);
     url_row_container_->SetVisible(false);
     new_tab_button_container_->SetVisible(false);
-    bottom_button_container_->SetVisible(false);
+    bottom_button_container_->SetVisible(!zen_hidden &&
+                                         !state_controller->IsCollapsed());
     gemini_button_->SetVisible(false);
   } else {
     top_button_container_->SetVisible(!zen_hidden);
@@ -869,12 +870,6 @@ void VerticalTabStripRegionView::ResizeToWidth(int width) {
 
 void VerticalTabStripRegionView::MaybeMoveProfileAndAppMenuButtons() {
 #if BUILDFLAG(IS_MAC)
-  // Keep the vertical tab strip sidebar "tabs-only" (no toolbar buttons moved
-  // into it).
-  if (kSkepterSidebarTabsOnly) {
-    return;
-  }
-
   if (skepter_moved_profile_and_menu_buttons_) {
     return;
   }
