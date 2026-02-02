@@ -43,6 +43,7 @@
 #include "ui/native_theme/os_settings_provider.h"
 
 #if BUILDFLAG(IS_MAC)
+#include "base/apple/foundation_util.h"
 #include "ui/native_theme/native_theme_aura.h"
 #include "ui/native_theme/native_theme_mac.h"
 #elif defined(USE_AURA)
@@ -63,6 +64,21 @@ namespace {
 #if BUILDFLAG(IS_MAC)
 using NativeUiTheme = NativeThemeMac;
 using WebUiTheme = NativeThemeAura;
+
+bool UseOverlayScrollbarsForWebOnMac() {
+  // Match the system preference for showing scroll bars:
+  // - "Always" => legacy (layout-reserving) scrollbars.
+  // - Otherwise => overlay scrollbars (hidden by default, shown on scroll).
+  base::apple::ScopedCFTypeRef<CFPropertyListRef> value(
+      CFPreferencesCopyAppValue(CFSTR("AppleShowScrollBars"),
+                                CFSTR(".GlobalPreferences")));
+  CFStringRef show_scroll_bars = base::apple::CFCast<CFStringRef>(value.get());
+  if (!show_scroll_bars) {
+    return true;
+  }
+  return CFStringCompare(show_scroll_bars, CFSTR("Always"),
+                         kCFCompareCaseInsensitive) != kCFCompareEqualTo;
+}
 #elif defined(USE_AURA)
 #if BUILDFLAG(IS_WIN)
 using NativeUiTheme = NativeThemeWin;
@@ -161,7 +177,12 @@ NativeTheme* NativeTheme::GetInstanceForWeb() {
 #if defined(USE_AURA)
   NativeTheme* const native_theme = GetInstanceForWebImpl();
 #else
+#if BUILDFLAG(IS_MAC)
+  static base::NoDestructor<WebUiTheme> s_web_theme(
+      UseOverlayScrollbarsForWebOnMac());
+#else
   static base::NoDestructor<WebUiTheme> s_web_theme;
+#endif
   NativeTheme* const native_theme = s_web_theme.get();
 #endif
   static bool initialized = false;

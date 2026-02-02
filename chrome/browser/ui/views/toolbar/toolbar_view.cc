@@ -314,7 +314,6 @@ void ToolbarView::Init() {
 #if BUILDFLAG(IS_MAC)
   if (auto* controller = tabs::VerticalTabStripStateController::From(browser_);
       controller && controller->ShouldDisplayVerticalTabs()) {
-    hide_navigation_buttons_for_vertical_tabs_ = true;
     auto zen_toggle_button = std::make_unique<ToolbarButton>(
         base::BindRepeating(
             [](Browser* browser, const ui::Event& event) {
@@ -1220,26 +1219,10 @@ void ToolbarView::UpdateVerticalTabStripZenToggleVisibility() {
     return;
   }
 
-  auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-  // Only show the toolbar toggle when the vertical tab strip is fully hidden
-  // ("zen mode"). When the strip is visible, the toggle lives in the sidebar.
-  const bool should_show = controller && controller->ShouldDisplayVerticalTabs() &&
-                           controller->IsCollapsed();
+  // Keep the vertical tab strip sidebar "tabs-only" in all states, including
+  // when collapsed/hidden (no toolbar expand/collapse entry point).
+  const bool should_show = false;
   vertical_tab_strip_zen_toggle_button_->SetVisible(should_show);
-
-  if (controller) {
-    const gfx::VectorIcon& icon =
-        (controller->IsCollapsed() == base::i18n::IsRTL())
-            ? views::kMenuOpenIcon
-            : views::kMenuCloseIcon;
-    const int text_id = controller->IsCollapsed() ? IDS_EXPAND_VERTICAL_TABS
-                                                  : IDS_COLLAPSE_VERTICAL_TABS;
-    const auto text = l10n_util::GetStringUTF16(text_id);
-    vertical_tab_strip_zen_toggle_button_->SetVectorIcon(icon);
-    vertical_tab_strip_zen_toggle_button_->SetTooltipText(
-        BrowserActions::GetCleanTitleAndTooltipText(text));
-    vertical_tab_strip_zen_toggle_button_->GetViewAccessibility().SetName(text);
-  }
 
   InvalidateLayout();
 }

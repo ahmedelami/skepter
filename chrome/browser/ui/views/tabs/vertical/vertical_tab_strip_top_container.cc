@@ -44,47 +44,15 @@ VerticalTabStripTopContainer::VerticalTabStripTopContainer(
   tab_search_button_ = AddChildButtonFor(kActionTabSearch);
   tab_search_button_->SetProperty(views::kElementIdentifierKey,
                                   kTabSearchButtonElementId);
-#endif
-
   collapse_button_ = AddChildButtonFor(kActionToggleCollapseVertical);
   collapse_button_->SetProperty(views::kElementIdentifierKey,
                                 kVerticalTabStripCollapseButtonElementId);
+#endif
 
 #if BUILDFLAG(IS_MAC)
-  if (browser_) {
-    const auto callback = [](Browser* browser, int command,
-                             const ui::Event& event) {
-      chrome::ExecuteCommandWithDisposition(
-          browser, command, ui::DispositionFromEventFlags(event.flags()));
-    };
-
-    auto back_button = std::make_unique<TopContainerButton>();
-    back_button->SetCallback(
-        base::BindRepeating(callback, browser_, IDC_BACK));
-    back_button->SetTooltipText(
-        l10n_util::GetStringUTF16(IDS_TOOLTIP_BACK));
-    back_button->UpdateIcon(ui::ImageModel::FromVectorIcon(
-        vector_icons::kBackArrowChromeRefreshIcon));
-    back_button_ = AddChildView(std::move(back_button));
-
-    auto forward_button = std::make_unique<TopContainerButton>();
-    forward_button->SetCallback(
-        base::BindRepeating(callback, browser_, IDC_FORWARD));
-    forward_button->SetTooltipText(
-        l10n_util::GetStringUTF16(IDS_TOOLTIP_FORWARD));
-    forward_button->UpdateIcon(ui::ImageModel::FromVectorIcon(
-        vector_icons::kForwardArrowChromeRefreshIcon));
-    forward_button_ = AddChildView(std::move(forward_button));
-
-    auto reload_button = std::make_unique<TopContainerButton>();
-    reload_button->SetCallback(
-        base::BindRepeating(callback, browser_, IDC_RELOAD));
-    reload_button->SetTooltipText(
-        l10n_util::GetStringUTF16(IDS_TOOLTIP_RELOAD));
-    reload_button->UpdateIcon(ui::ImageModel::FromVectorIcon(
-        vector_icons::kReloadChromeRefreshIcon));
-    reload_button_ = AddChildView(std::move(reload_button));
-  }
+  // Keep the sidebar in vertical tabs mode "tabs-only" (no navigation or
+  // collapse/expand controls). Navigation controls remain in the main toolbar,
+  // and collapsing/expanding can be done via resizing or shortcuts.
 #endif
 }
 

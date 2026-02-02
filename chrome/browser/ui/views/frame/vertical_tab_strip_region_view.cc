@@ -77,8 +77,11 @@ namespace {
 constexpr int kRegionVerticalPadding = 5;
 constexpr bool kSkepterShowSidebarUrlRow = false;
 #if BUILDFLAG(IS_MAC)
+// macOS: keep the vertical tab strip sidebar "tabs-only".
+constexpr bool kSkepterSidebarTabsOnly = true;
 constexpr bool kSkepterShowSidebarNewTabButton = false;
 #else
+constexpr bool kSkepterSidebarTabsOnly = false;
 constexpr bool kSkepterShowSidebarNewTabButton = true;
 #endif
 
@@ -247,7 +250,18 @@ void VerticalTabStripRegionView::Layout(PassKey) {
 
 views::View* VerticalTabStripRegionView::GetDefaultFocusableChild() {
   if (top_button_container_ && top_button_container_->GetVisible()) {
-    return top_button_container_;
+    // Only focus the top container when it actually contains focusable
+    // controls.
+    if (auto* collapse = top_button_container_->GetCollapseButton();
+        collapse && collapse->GetVisible()) {
+      return top_button_container_;
+    }
+#if !BUILDFLAG(IS_MAC)
+    if (auto* tab_search = top_button_container_->GetTabSearchButton();
+        tab_search && tab_search->GetVisible()) {
+      return top_button_container_;
+    }
+#endif
   }
   if (url_row_button_ && url_row_button_->GetVisible()) {
     return url_row_button_;
@@ -728,15 +742,25 @@ void VerticalTabStripRegionView::ClearTabStripView(views::View* view) {
 void VerticalTabStripRegionView::OnCollapsedStateChanged(
     tabs::VerticalTabStripStateController* state_controller) {
   const bool zen_hidden = state_controller->IsZenHidden();
-  top_button_container_->SetVisible(!zen_hidden);
-  top_button_separator_->SetVisible(!zen_hidden);
-  const bool show_url_row = kSkepterShowSidebarUrlRow && !zen_hidden &&
-                            !state_controller->IsCollapsed();
-  url_row_container_->SetVisible(show_url_row);
-  new_tab_button_container_->SetVisible(kSkepterShowSidebarNewTabButton &&
-                                        !zen_hidden);
-  bottom_button_container_->SetVisible(!zen_hidden);
-  gemini_button_->SetVisible(!zen_hidden);
+  if (kSkepterSidebarTabsOnly) {
+    // Tabs-only sidebar: never show other controls.
+    top_button_container_->SetVisible(false);
+    top_button_separator_->SetVisible(false);
+    url_row_container_->SetVisible(false);
+    new_tab_button_container_->SetVisible(false);
+    bottom_button_container_->SetVisible(false);
+    gemini_button_->SetVisible(false);
+  } else {
+    top_button_container_->SetVisible(!zen_hidden);
+    top_button_separator_->SetVisible(!zen_hidden);
+    const bool show_url_row = kSkepterShowSidebarUrlRow && !zen_hidden &&
+                              !state_controller->IsCollapsed();
+    url_row_container_->SetVisible(show_url_row);
+    new_tab_button_container_->SetVisible(kSkepterShowSidebarNewTabButton &&
+                                          !zen_hidden);
+    bottom_button_container_->SetVisible(!zen_hidden);
+    gemini_button_->SetVisible(!zen_hidden);
+  }
   if (tab_strip_view_) {
     tab_strip_view_->SetVisible(!zen_hidden);
   }
@@ -845,6 +869,12 @@ void VerticalTabStripRegionView::ResizeToWidth(int width) {
 
 void VerticalTabStripRegionView::MaybeMoveProfileAndAppMenuButtons() {
 #if BUILDFLAG(IS_MAC)
+  // Keep the vertical tab strip sidebar "tabs-only" (no toolbar buttons moved
+  // into it).
+  if (kSkepterSidebarTabsOnly) {
+    return;
+  }
+
   if (skepter_moved_profile_and_menu_buttons_) {
     return;
   }
