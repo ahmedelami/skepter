@@ -744,6 +744,19 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
 #endif  // BUILDFLAG(IS_MAC)
       SavePage(browser_);
       break;
+    case IDC_TOGGLE_VERTICAL_TABS_COLLAPSED: {
+      if (auto* controller =
+              tabs::VerticalTabStripStateController::From(browser_);
+          controller && controller->ShouldDisplayVerticalTabs()) {
+        if (controller->IsZenHidden()) {
+          controller->SetZenHidden(false);
+          controller->SetCollapsed(true);
+        } else {
+          controller->SetCollapsed(!controller->IsCollapsed());
+        }
+      }
+      break;
+    }
     case IDC_BOOKMARK_THIS_TAB:
       BookmarkCurrentTab(browser_);
       break;
@@ -1510,6 +1523,8 @@ void BrowserCommandController::InitCommandState() {
   command_updater_.UpdateCommandEnabled(IDC_ORGANIZE_TABS, true);
   command_updater_.UpdateCommandEnabled(IDC_DECLUTTER_TABS, true);
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS, true);
+  command_updater_.UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_COLLAPSED,
+                                        true);
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
   command_updater_.UpdateCommandEnabled(IDC_MINIMIZE_WINDOW, true);

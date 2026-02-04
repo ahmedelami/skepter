@@ -743,9 +743,10 @@ void VerticalTabStripRegionView::OnCollapsedStateChanged(
     tabs::VerticalTabStripStateController* state_controller) {
   const bool zen_hidden = state_controller->IsZenHidden();
   if (kSkepterSidebarTabsOnly) {
-    // Tabs-only sidebar: hide top controls; keep the bottom profile + app menu.
-    top_button_container_->SetVisible(false);
-    top_button_separator_->SetVisible(false);
+    // Tabs-only sidebar: only show back/forward controls at the top; keep the
+    // bottom profile + app menu when expanded.
+    top_button_container_->SetVisible(!zen_hidden);
+    top_button_separator_->SetVisible(!zen_hidden);
     url_row_container_->SetVisible(false);
     new_tab_button_container_->SetVisible(false);
     bottom_button_container_->SetVisible(!zen_hidden &&

@@ -7,6 +7,7 @@
 #include "build/build_config.h"
 #include "base/functional/bind.h"
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -16,12 +17,14 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/tabs/vertical/top_container_button.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/strings/grit/components_strings.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
 #include "ui/views/actions/action_view_controller.h"
+#include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/layout/delegating_layout_manager.h"
 #include "ui/views/layout/layout_types.h"
@@ -50,13 +53,47 @@ VerticalTabStripTopContainer::VerticalTabStripTopContainer(
 #endif
 
 #if BUILDFLAG(IS_MAC)
-  // Keep the sidebar in vertical tabs mode "tabs-only" (no navigation or
-  // collapse/expand controls). Navigation controls remain in the main toolbar,
-  // and collapsing/expanding can be done via resizing or shortcuts.
+  auto make_nav_button =
+      [&](int command_id, const gfx::VectorIcon& icon,
+          std::u16string tooltip_text, std::u16string accessible_name) {
+        auto button = std::make_unique<TopContainerButton>();
+        button->SetCallback(base::BindRepeating(
+            [](Browser* browser, int command_id, const ui::Event& event) {
+              chrome::ExecuteCommandWithDisposition(
+                  browser, command_id,
+                  ui::DispositionFromEventFlags(event.flags()));
+            },
+            browser_, command_id));
+        button->UpdateIcon(ui::ImageModel::FromVectorIcon(icon));
+        button->SetText(std::u16string());
+        button->SetTooltipText(std::move(tooltip_text));
+        button->GetViewAccessibility().SetName(std::move(accessible_name));
+        button->SetHorizontalAlignment(gfx::ALIGN_RIGHT);
+        button->set_tag(command_id);
+
+        TopContainerButton* button_ptr = AddChildView(std::move(button));
+        button_ptr->SetEnabled(chrome::IsCommandEnabled(browser_, command_id));
+        chrome::AddCommandObserver(browser_, command_id, this);
+        return button_ptr;
+      };
+
+  back_button_ =
+      make_nav_button(IDC_BACK, vector_icons::kBackArrowChromeRefreshIcon,
+                      l10n_util::GetStringUTF16(IDS_TOOLTIP_BACK),
+                      l10n_util::GetStringUTF16(IDS_ACCNAME_BACK));
+  forward_button_ =
+      make_nav_button(IDC_FORWARD, vector_icons::kForwardArrowChromeRefreshIcon,
+                      l10n_util::GetStringUTF16(IDS_TOOLTIP_FORWARD),
+                      l10n_util::GetStringUTF16(IDS_ACCNAME_FORWARD));
 #endif
 }
 
-VerticalTabStripTopContainer::~VerticalTabStripTopContainer() = default;
+VerticalTabStripTopContainer::~VerticalTabStripTopContainer() {
+#if BUILDFLAG(IS_MAC)
+  chrome::RemoveCommandObserver(browser_, IDC_BACK, this);
+  chrome::RemoveCommandObserver(browser_, IDC_FORWARD, this);
+#endif
+}
 
 views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
     const views::SizeBounds& size_bounds) const {
@@ -87,7 +124,7 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
 
   if (state_controller_->IsCollapsed()) {
     // If the vertical tab strip is collapsed, then lay out the buttons
-    // vertically in reverse order from top-to-bottom.
+    // vertically from top-to-bottom.
     int total_height = exclusion_width_ == 0 ? 0 : toolbar_height_;
     for (views::LabelButton* container_button : container_buttons) {
       total_height += container_button->GetPreferredSize().height();
@@ -102,8 +139,7 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
 
     int current_y = 0;
 
-    for (views::LabelButton* container_button :
-         base::Reversed(container_buttons)) {
+    for (views::LabelButton* container_button : container_buttons) {
       const gfx::Size pref_size = container_button->GetPreferredSize();
       gfx::Rect bounds(std::max(0, (host_size.width() - pref_size.width()) / 2),
                        current_y, pref_size.width(), pref_size.height());
@@ -330,6 +366,28 @@ void VerticalTabStripTopContainer::SetExclusionWidthForLayout(
   }
   exclusion_width_ = exclusion_width;
   InvalidateLayout();
+}
+
+void VerticalTabStripTopContainer::EnabledStateChangedForCommand(int id,
+                                                                 bool enabled) {
+#if BUILDFLAG(IS_MAC)
+  switch (id) {
+    case IDC_BACK:
+      if (back_button_) {
+        back_button_->SetEnabled(enabled);
+      }
+      return;
+    case IDC_FORWARD:
+      if (forward_button_) {
+        forward_button_->SetEnabled(enabled);
+      }
+      return;
+    default:
+      return;
+  }
+#else
+  return;
+#endif
 }
 
 BEGIN_METADATA(VerticalTabStripTopContainer)

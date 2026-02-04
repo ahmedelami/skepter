@@ -116,6 +116,7 @@ const std::vector<KeyboardShortcutData>& GetShortcutsNotPresentInMainMenu() {
     // ---    -----  -----  ------ --------               -------
       {true,  true,  false, false, kVK_ANSI_RightBracket, IDC_SELECT_NEXT_TAB},
       {true,  true,  false, false, kVK_ANSI_LeftBracket,  IDC_SELECT_PREVIOUS_TAB},
+      {true,  true,  false, false, kVK_ANSI_S,            IDC_TOGGLE_VERTICAL_TABS_COLLAPSED},
       {false, false, true,  false, kVK_PageDown,          IDC_SELECT_NEXT_TAB},
       {false, false, true,  false, kVK_PageUp,            IDC_SELECT_PREVIOUS_TAB},
       {true,  false, false, true,  kVK_RightArrow,        IDC_SELECT_NEXT_TAB},
