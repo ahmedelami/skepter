@@ -114,16 +114,19 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
 #if BUILDFLAG(IS_MAC)
   const bool is_collapsed = state_controller_->IsCollapsed();
 
-  if (reload_button_ && reload_button_->GetVisible()) {
-    container_buttons.push_back(reload_button_);
-  }
-  if (back_button_ && back_button_->GetVisible()) {
+  // Keep ordering consistent across states.
+  // - Expanded: back, forward, reload.
+  // - Collapsed: back, reload.
+  if (back_button_) {
     container_buttons.push_back(back_button_);
   }
-  if (!is_collapsed && forward_button_ && forward_button_->GetVisible()) {
+  if (!is_collapsed && forward_button_) {
     container_buttons.push_back(forward_button_);
   }
-  if (collapse_button_ && collapse_button_->GetVisible()) {
+  if (reload_button_) {
+    container_buttons.push_back(reload_button_);
+  }
+  if (collapse_button_) {
     container_buttons.push_back(collapse_button_);
   }
 
@@ -151,8 +154,8 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
       const gfx::Size pref_size = container_button->GetPreferredSize();
       gfx::Rect bounds(std::max(0, (host_size.width() - pref_size.width()) / 2),
                        current_y, pref_size.width(), pref_size.height());
-      layout.child_layouts.emplace_back(container_button,
-                                        container_button->GetVisible(), bounds);
+      layout.child_layouts.emplace_back(container_button, /*visible=*/true,
+                                        bounds);
 
       host_size.SetToMax(gfx::Size(bounds.right(), 0));
 
@@ -170,15 +173,15 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
           current_x,
           std::max(0, (host_size.height() - pref_size.height()) / 2),
           pref_size.width(), pref_size.height());
-      layout.child_layouts.emplace_back(container_button,
-                                        container_button->GetVisible(), bounds);
+      layout.child_layouts.emplace_back(container_button, /*visible=*/true,
+                                        bounds);
 
       host_size.SetToMax(gfx::Size(bounds.right(), bounds.bottom()));
       current_x += pref_size.width() + padding;
     }
   }
 
-  if (is_collapsed && forward_button_) {
+  if (forward_button_ && is_collapsed) {
     // Ensure the forward button becomes hidden in the thinnest (collapsed)
     // sidebar state.
     layout.child_layouts.emplace_back(forward_button_.get(),
