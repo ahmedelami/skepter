@@ -77,6 +77,11 @@ VerticalTabStripTopContainer::VerticalTabStripTopContainer(
         return button_ptr;
       };
 
+  reload_button_ =
+      make_nav_button(IDC_RELOAD, vector_icons::kReloadChromeRefreshIcon,
+                      l10n_util::GetStringUTF16(IDS_TOOLTIP_RELOAD),
+                      l10n_util::GetStringUTF16(IDS_ACCNAME_RELOAD));
+
   back_button_ =
       make_nav_button(IDC_BACK, vector_icons::kBackArrowChromeRefreshIcon,
                       l10n_util::GetStringUTF16(IDS_TOOLTIP_BACK),
@@ -92,6 +97,7 @@ VerticalTabStripTopContainer::~VerticalTabStripTopContainer() {
 #if BUILDFLAG(IS_MAC)
   chrome::RemoveCommandObserver(browser_, IDC_BACK, this);
   chrome::RemoveCommandObserver(browser_, IDC_FORWARD, this);
+  chrome::RemoveCommandObserver(browser_, IDC_RELOAD, this);
 #endif
 }
 
@@ -106,23 +112,25 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
   std::vector<views::LabelButton*> container_buttons;
 
 #if BUILDFLAG(IS_MAC)
-  if (collapse_button_ && collapse_button_->GetVisible()) {
-    container_buttons.push_back(collapse_button_);
+  const bool is_collapsed = state_controller_->IsCollapsed();
+
+  if (reload_button_ && reload_button_->GetVisible()) {
+    container_buttons.push_back(reload_button_);
   }
   if (back_button_ && back_button_->GetVisible()) {
     container_buttons.push_back(back_button_);
   }
-  if (forward_button_ && forward_button_->GetVisible()) {
+  if (!is_collapsed && forward_button_ && forward_button_->GetVisible()) {
     container_buttons.push_back(forward_button_);
   }
-  if (reload_button_ && reload_button_->GetVisible()) {
-    container_buttons.push_back(reload_button_);
+  if (collapse_button_ && collapse_button_->GetVisible()) {
+    container_buttons.push_back(collapse_button_);
   }
 
   const int padding =
       GetLayoutConstant(LayoutConstant::kVerticalTabStripTopButtonPadding);
 
-  if (state_controller_->IsCollapsed()) {
+  if (is_collapsed) {
     // If the vertical tab strip is collapsed, then lay out the buttons
     // vertically from top-to-bottom.
     int total_height = exclusion_width_ == 0 ? 0 : toolbar_height_;
@@ -168,6 +176,13 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
       host_size.SetToMax(gfx::Size(bounds.right(), bounds.bottom()));
       current_x += pref_size.width() + padding;
     }
+  }
+
+  if (is_collapsed && forward_button_) {
+    // Ensure the forward button becomes hidden in the thinnest (collapsed)
+    // sidebar state.
+    layout.child_layouts.emplace_back(forward_button_.get(),
+                                      /*visible=*/false, gfx::Rect());
   }
 
   layout.host_size = host_size;
@@ -380,6 +395,11 @@ void VerticalTabStripTopContainer::EnabledStateChangedForCommand(int id,
     case IDC_FORWARD:
       if (forward_button_) {
         forward_button_->SetEnabled(enabled);
+      }
+      return;
+    case IDC_RELOAD:
+      if (reload_button_) {
+        reload_button_->SetEnabled(enabled);
       }
       return;
     default:
