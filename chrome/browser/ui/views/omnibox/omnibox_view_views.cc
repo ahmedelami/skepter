@@ -2058,8 +2058,16 @@ bool OmniboxViewViews::HandleKeyEvent(views::Textfield* textfield,
       }
       return true;
     }
-    case ui::VKEY_ESCAPE:
+    case ui::VKEY_ESCAPE: {
+#if BUILDFLAG(IS_MAC)
+      if (views::Widget* const widget = GetWidget();
+          widget && widget->GetName() == "SkepterOmniboxPopup") {
+        widget->CloseWithReason(views::Widget::ClosedReason::kEscKeyPressed);
+        return true;
+      }
+#endif  // BUILDFLAG(IS_MAC)
       return controller()->edit_model()->OnEscapeKeyPressed();
+    }
 
     case ui::VKEY_CONTROL:
       controller()->edit_model()->OnControlKeyChanged(true);

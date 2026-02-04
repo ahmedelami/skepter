@@ -913,6 +913,36 @@ void ChromeOmniboxClient::OpenUrl(GURL gurl) {
   NavigateParams params(browser_, gurl, ui::PAGE_TRANSITION_GENERATED);
   params.disposition = WindowOpenDisposition::CURRENT_TAB;
   Navigate(&params);
+
+#if BUILDFLAG(IS_MAC)
+  // Skepter: in vertical tabs mode, omnibox focus is shown in a centered popup.
+  // Close it after opening an URL (e.g. AIM button), and focus the page.
+  if (auto* const vertical_tabs_controller =
+          tabs::VerticalTabStripStateController::From(browser_);
+      vertical_tabs_controller &&
+      vertical_tabs_controller->ShouldDisplayVerticalTabs()) {
+    if (BrowserView* const browser_view =
+            BrowserView::GetBrowserViewForBrowser(browser_)) {
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE,
+          base::BindOnce(
+              [](base::WeakPtr<BrowserView> browser_view,
+                 base::WeakPtr<ChromeOmniboxClient> client) {
+                if (browser_view) {
+                  browser_view->CloseSkepterOmniboxPopup();
+                }
+                if (client) {
+                  client->FocusWebContents();
+                }
+              },
+              browser_view->GetAsWeakPtr(), weak_factory_.GetWeakPtr()));
+    } else {
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(&ChromeOmniboxClient::FocusWebContents,
+                                    weak_factory_.GetWeakPtr()));
+    }
+  }
+#endif  // BUILDFLAG(IS_MAC)
 }
 
 void ChromeOmniboxClient::OpenIphLink(GURL gurl) {
