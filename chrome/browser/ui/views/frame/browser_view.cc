@@ -18,6 +18,7 @@
 #include "base/check_deref.h"
 #include "base/check_op.h"
 #include "base/command_line.h"
+#include "base/callback_list.h"
 #include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -91,7 +92,9 @@
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/find_bar/find_bar.h"
 #include "chrome/browser/ui/layout_constants.h"
+#include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
+#include "chrome/browser/ui/omnibox/omnibox_popup_state_manager.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
@@ -317,6 +320,7 @@
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/accessibility/view_accessibility_utils.h"
 #include "ui/views/animation/compositor_animation_runner.h"
+#include "ui/views/bubble/bubble_border.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/controls/button/menu_button.h"
 #include "ui/views/controls/textfield/textfield.h"
@@ -324,6 +328,7 @@
 #include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/layout/fill_layout.h"
+#include "ui/views/layout/layout_provider.h"
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
 #include "ui/views/views_features.h"
@@ -438,16 +443,46 @@ class SkepterOmniboxPopupDelegate : public views::WidgetDelegate {
     SetShowTitle(false);
     SetShowCloseButton(false);
 
-    auto contents = std::make_unique<views::View>();
-    contents_ = contents.get();
-    auto* layout =
-        contents->SetLayoutManager(std::make_unique<views::BoxLayout>(
-            views::BoxLayout::Orientation::kVertical, gfx::Insets(8), 0));
-    layout->set_cross_axis_alignment(
-        views::BoxLayout::CrossAxisAlignment::kStretch);
+    constexpr int kElevation = 16;
+    const int corner_radius = views::LayoutProvider::Get()->GetCornerRadiusMetric(
+        views::ShapeContextTokens::kOmniboxExpandedRadius);
+    shadow_insets_ =
+        views::BubbleBorder::GetBorderAndShadowInsets(kElevation);
 
-    location_bar_view_ = contents->AddChildView(std::move(location_bar_view));
-    SetContentsView(std::move(contents));
+    auto container = std::make_unique<views::View>();
+    container_ = container.get();
+    container->SetBorder(CreateShadowBorder(/*draw_shadow=*/true));
+    container->SetLayoutManager(std::make_unique<views::FillLayout>());
+
+    auto contents_host = std::make_unique<views::View>();
+    contents_host_ = contents_host.get();
+    contents_host->SetBackground(
+        views::CreateSolidBackground(kColorOmniboxResultsBackground));
+    contents_host->SetPaintToLayer();
+    contents_host->layer()->SetFillsBoundsOpaquely(false);
+    contents_host->layer()->SetRoundedCornerRadius(
+        gfx::RoundedCornersF(corner_radius));
+    contents_host->layer()->SetIsFastRoundedCorner(true);
+    contents_host->SetLayoutManager(std::make_unique<views::FillLayout>());
+    location_bar_view_ =
+        contents_host->AddChildView(std::move(location_bar_view));
+    container->AddChildView(std::move(contents_host));
+
+    // Hide the centered omnibox shadow while any omnibox popup is open to avoid
+    // a doubled/ghosted outline (the popup already draws its own shadow).
+    if (auto* location_bar =
+            views::AsViewClass<LocationBarView>(location_bar_view_)) {
+      popup_state_changed_subscription_ =
+          location_bar->GetOmniboxController()
+              ->popup_state_manager()
+              ->AddPopupStateChangedCallback(base::BindRepeating(
+                  &SkepterOmniboxPopupDelegate::OnPopupStateChanged,
+                  base::Unretained(this)));
+      UpdateShadowForPopupState(
+          location_bar->GetOmniboxController()->popup_state_manager()->popup_state());
+    }
+
+    SetContentsView(std::move(container));
   }
 
   SkepterOmniboxPopupDelegate(const SkepterOmniboxPopupDelegate&) = delete;
@@ -456,12 +491,14 @@ class SkepterOmniboxPopupDelegate : public views::WidgetDelegate {
   ~SkepterOmniboxPopupDelegate() override = default;
 
   std::unique_ptr<views::View> TakeLocationBarView() {
-    if (!location_bar_view_ || !contents_) {
+    if (!location_bar_view_ || !contents_host_) {
       return nullptr;
     }
-    auto result = contents_->RemoveChildViewT(location_bar_view_);
+    popup_state_changed_subscription_ = {};
+    auto result = contents_host_->RemoveChildViewT(location_bar_view_);
     location_bar_view_ = nullptr;
-    contents_ = nullptr;
+    contents_host_ = nullptr;
+    container_ = nullptr;
     return result;
   }
 
@@ -473,9 +510,41 @@ class SkepterOmniboxPopupDelegate : public views::WidgetDelegate {
   }
 
  private:
+  std::unique_ptr<views::BubbleBorder> CreateShadowBorder(bool draw_shadow) {
+    constexpr int kElevation = 16;
+    const int corner_radius =
+        views::LayoutProvider::Get()->GetCornerRadiusMetric(
+            views::ShapeContextTokens::kOmniboxExpandedRadius);
+    auto border = std::make_unique<views::BubbleBorder>(
+        views::BubbleBorder::Arrow::NONE,
+        draw_shadow ? views::BubbleBorder::Shadow::STANDARD_SHADOW
+                    : views::BubbleBorder::Shadow::NO_SHADOW);
+    border->set_rounded_corners(gfx::RoundedCornersF(corner_radius));
+    border->set_md_shadow_elevation(kElevation);
+    border->set_insets(shadow_insets_);
+    return border;
+  }
+
+  void OnPopupStateChanged(OmniboxPopupState old_state,
+                           OmniboxPopupState new_state) {
+    UpdateShadowForPopupState(new_state);
+  }
+
+  void UpdateShadowForPopupState(OmniboxPopupState state) {
+    if (!container_) {
+      return;
+    }
+    container_->SetBorder(
+        CreateShadowBorder(/*draw_shadow=*/state == OmniboxPopupState::kNone));
+    container_->SchedulePaint();
+  }
+
   raw_ptr<SkepterOmniboxPopupController> controller_;
-  raw_ptr<views::View> contents_ = nullptr;
+  raw_ptr<views::View> container_ = nullptr;
+  raw_ptr<views::View> contents_host_ = nullptr;
   raw_ptr<views::View> location_bar_view_ = nullptr;
+  gfx::Insets shadow_insets_;
+  base::CallbackListSubscription popup_state_changed_subscription_;
 };
 
 SkepterOmniboxPopupController::~SkepterOmniboxPopupController() {
@@ -545,7 +614,9 @@ bool SkepterOmniboxPopupController::Show() {
       views::Widget::InitParams::TYPE_POPUP);
   params.name = "SkepterOmniboxPopup";
   params.activatable = views::Widget::InitParams::Activatable::kYes;
-  params.shadow_type = views::Widget::InitParams::ShadowType::kDrop;
+  // Shadow is drawn in Views via the BubbleBorder on the contents view.
+  params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
+  params.shadow_type = views::Widget::InitParams::ShadowType::kNone;
   params.context = browser_view_->GetWidget()->GetNativeWindow();
   params.SetParent(browser_view_->GetWidget()->GetNativeView());
   params.bounds = bounds;
@@ -642,16 +713,19 @@ gfx::Rect SkepterOmniboxPopupController::CalculatePopupBounds() const {
   constexpr int kHorizontalMargin = 24;
   constexpr int kMaxWidth = 720;
 
-  const int width = std::max(
+  constexpr int kElevation = 16;
+  const gfx::Insets shadow_insets =
+      views::BubbleBorder::GetBorderAndShadowInsets(kElevation);
+  const int content_width = std::max(
       1, std::min(kMaxWidth, window_bounds.width() - kHorizontalMargin * 2));
+  const int width = content_width + shadow_insets.width();
 
-  constexpr int kPopupVerticalPadding = 16;  // 8px top + 8px bottom.
-  const int height = browser_view_->GetLocationBarView()
+  const int content_height = browser_view_->GetLocationBarView()
                          ? browser_view_->GetLocationBarView()
                                    ->GetPreferredSize()
-                                   .height() +
-                               kPopupVerticalPadding
+                                   .height()
                          : 48;
+  const int height = content_height + shadow_insets.height();
 
   const int x = window_bounds.x() + (window_bounds.width() - width) / 2;
   const int y = window_bounds.y() + (window_bounds.height() - height) / 4;
@@ -2572,6 +2646,15 @@ void BrowserView::SetFocusToLocationBar(bool is_user_initiated) {
     focus_manager->ClearFocus();
   }
 }
+
+#if BUILDFLAG(IS_MAC)
+void BrowserView::CloseSkepterOmniboxPopup() {
+  if (!skepter_omnibox_popup_) {
+    return;
+  }
+  skepter_omnibox_popup_.reset();
+}
+#endif  // BUILDFLAG(IS_MAC)
 
 void BrowserView::UpdateReloadStopState(bool is_loading, bool force) {
   ReloadControl::Mode mode =

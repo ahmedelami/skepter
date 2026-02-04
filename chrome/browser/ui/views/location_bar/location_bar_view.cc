@@ -62,6 +62,7 @@
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -190,6 +191,7 @@
 #include "ui/views/controls/focus_ring.h"
 #include "ui/views/controls/highlight_path_generator.h"
 #include "ui/views/controls/label.h"
+#include "ui/views/layout/layout_provider.h"
 #include "ui/views/property_effects.h"
 #include "ui/views/style/typography.h"
 #include "ui/views/style/typography_provider.h"
@@ -260,7 +262,19 @@ LocationBarView::LocationBarView(Browser* browser,
 	        }));
 	    views::FocusRing::Get(this)->SetOutsetFocusRingDisabled(true);
 #if BUILDFLAG(IS_MAC)
-	    views::InstallRectHighlightPathGenerator(this);
+	    auto* const vertical_tab_strip_state_controller =
+	        browser_ ? tabs::VerticalTabStripStateController::From(browser_)
+	                 : nullptr;
+	    if (vertical_tab_strip_state_controller &&
+	        vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs()) {
+	      const int corner_radius =
+	          views::LayoutProvider::Get()->GetCornerRadiusMetric(
+	              views::ShapeContextTokens::kOmniboxExpandedRadius);
+	      views::InstallRoundRectHighlightPathGenerator(
+	          this, gfx::Insets(), gfx::RoundedCornersF(corner_radius));
+	    } else {
+	      views::InstallRectHighlightPathGenerator(this);
+	    }
 #else
 	    views::InstallPillHighlightPathGenerator(this);
 #endif
@@ -624,6 +638,19 @@ bool LocationBarView::IsInitialized() const {
 }
 
 int LocationBarView::GetBorderRadius() const {
+#if BUILDFLAG(IS_MAC)
+  if (browser_) {
+    auto* const vertical_tab_strip_state_controller =
+        tabs::VerticalTabStripStateController::From(browser_);
+    if (vertical_tab_strip_state_controller &&
+        vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs()) {
+      // Match the omnibox suggestion dropdown's corner radius so the centered
+      // omnibox popup and its results feel like a single, cohesive surface.
+      return views::LayoutProvider::Get()->GetCornerRadiusMetric(
+          views::ShapeContextTokens::kOmniboxExpandedRadius);
+    }
+  }
+#endif  // BUILDFLAG(IS_MAC)
   return ChromeLayoutProvider::Get()->GetCornerRadiusMetric(
       views::Emphasis::kMaximum, size());
 }
@@ -1511,7 +1538,9 @@ void LocationBarView::RefreshBackground() {
 
   const auto* const color_provider = GetColorProvider();
 #if BUILDFLAG(IS_MAC)
-  if (!is_popup_mode_) {
+  const bool is_skepter_centered_omnibox_popup =
+      GetWidget() && GetWidget()->GetName() == "SkepterOmniboxPopup";
+  if (!is_popup_mode_ && !is_skepter_centered_omnibox_popup) {
     // Make the omnibox blend into the toolbar on macOS (no pill background).
     background_color_ = color_provider->GetColor(kColorToolbar);
     SetBackground(views::CreateSolidBackground(background_color_));
@@ -1642,6 +1671,19 @@ void LocationBarView::RefreshAiModePageActionIconView() {
       page_action_icon_controller_->GetIconView(PageActionIconType::kAiMode);
   if (aim_icon_view) {
     aim_icon_view->Update();
+#if BUILDFLAG(IS_MAC)
+    auto* const vertical_tab_strip_state_controller =
+        tabs::VerticalTabStripStateController::From(browser_);
+    const bool use_skepter_corner_radius =
+        vertical_tab_strip_state_controller &&
+        vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs();
+    const int corner_radius =
+        use_skepter_corner_radius
+            ? views::LayoutProvider::Get()->GetCornerRadiusMetric(
+                  views::ShapeContextTokens::kOmniboxExpandedRadius)
+            : aim_icon_view->GetPreferredSize().height() / 2;
+    aim_icon_view->SetCornerRadii(gfx::RoundedCornersF(corner_radius));
+#endif  // BUILDFLAG(IS_MAC)
   }
 }
 

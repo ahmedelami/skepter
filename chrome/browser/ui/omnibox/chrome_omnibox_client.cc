@@ -74,6 +74,7 @@
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
 #include "chrome/browser/ui/views/search_engines/dse_reset_dialog.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/pref_names.h"
 #include "components/bookmarks/browser/bookmark_model.h"
@@ -850,6 +851,39 @@ void ChromeOmniboxClient::OnAutocompleteAccept(
   }
 #endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+
+#if BUILDFLAG(IS_MAC)
+  // Skepter: in vertical tabs mode, omnibox focus is shown in a centered popup.
+  // After accepting input, close the popup and focus the page.
+  if (browser_) {
+    if (auto* const vertical_tabs_controller =
+            tabs::VerticalTabStripStateController::From(browser_);
+        vertical_tabs_controller &&
+        vertical_tabs_controller->ShouldDisplayVerticalTabs()) {
+      // Defer to avoid re-entrancy while handling accept.
+      if (BrowserView* const browser_view =
+              BrowserView::GetBrowserViewForBrowser(browser_)) {
+        base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+            FROM_HERE,
+            base::BindOnce(
+                [](base::WeakPtr<BrowserView> browser_view,
+                   base::WeakPtr<ChromeOmniboxClient> client) {
+                  if (browser_view) {
+                    browser_view->CloseSkepterOmniboxPopup();
+                  }
+                  if (client) {
+                    client->FocusWebContents();
+                  }
+                },
+                browser_view->GetAsWeakPtr(), weak_factory_.GetWeakPtr()));
+      } else {
+        base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+            FROM_HERE, base::BindOnce(&ChromeOmniboxClient::FocusWebContents,
+                                      weak_factory_.GetWeakPtr()));
+      }
+    }
+  }
+#endif  // BUILDFLAG(IS_MAC)
 }
 
 void ChromeOmniboxClient::OnInputInProgress(bool in_progress) {

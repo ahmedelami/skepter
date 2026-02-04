@@ -190,6 +190,12 @@ class BrowserView : public BrowserWindow,
   Browser* browser() { return browser_; }
   const Browser* browser() const { return browser_; }
 
+#if BUILDFLAG(IS_MAC)
+  // Closes the centered Skepter omnibox popup (if open) and restores the normal
+  // location bar view back into the toolbar hierarchy.
+  void CloseSkepterOmniboxPopup();
+#endif
+
   Profile* GetProfile() const;
 
   const TopControlsSlideController* top_controls_slide_controller() const {

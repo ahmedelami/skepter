@@ -63,6 +63,12 @@ VerticalTabStripStateController::VerticalTabStripStateController(
     SetUncollapsedWidth(restored_state_uncollapsed_width.value());
   }
 
+#if BUILDFLAG(IS_MAC)
+  // Skepter: default the vertical tab strip to the narrowest expanded width on
+  // startup (one notch before the compact/collapsed state).
+  SetUncollapsedWidth(kVerticalTabStripDefaultUncollapsedWidth);
+#endif
+
   UpdateCollapseActionItem();
 
   if (session_service_) {

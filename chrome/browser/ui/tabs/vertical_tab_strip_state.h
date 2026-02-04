@@ -5,9 +5,15 @@
 #ifndef CHROME_BROWSER_UI_TABS_VERTICAL_TAB_STRIP_STATE_H_
 #define CHROME_BROWSER_UI_TABS_VERTICAL_TAB_STRIP_STATE_H_
 
+#include "build/build_config.h"
+
 namespace tabs {
 
+#if BUILDFLAG(IS_MAC)
+inline constexpr int kVerticalTabStripDefaultUncollapsedWidth = 126;
+#else
 inline constexpr int kVerticalTabStripDefaultUncollapsedWidth = 240;
+#endif
 
 // Per-window state for the vertical tab strip.
 struct VerticalTabStripState {

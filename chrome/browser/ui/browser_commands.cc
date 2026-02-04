@@ -74,6 +74,7 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
@@ -1195,7 +1196,20 @@ content::WebContents& NewTab(Browser* browser, NewTabTypes context) {
       group_id = browser->tab_strip_model()->GetTabGroupForTab(index);
     }
 
-    return *AddAndReturnTabAt(browser, GURL(), -1, true, group_id);
+    content::WebContents* const contents =
+        AddAndReturnTabAt(browser, GURL(), -1, true, group_id);
+#if BUILDFLAG(IS_MAC)
+    // Skepter: show the floating omnibox on Cmd+T for vertical tabs.
+    if (contents && context == NewTabTypes::kNewTabCommand &&
+        browser->window()) {
+      if (auto* controller =
+              tabs::VerticalTabStripStateController::From(browser);
+          controller && controller->ShouldDisplayVerticalTabs()) {
+        browser->window()->SetFocusToLocationBar(/*is_user_initiated=*/true);
+      }
+    }
+#endif
+    return *contents;
   }
 
   ScopedTabbedBrowserDisplayer displayer(browser->profile());
