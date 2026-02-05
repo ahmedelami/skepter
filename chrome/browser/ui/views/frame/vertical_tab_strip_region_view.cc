@@ -222,6 +222,10 @@ VerticalTabStripRegionView::~VerticalTabStripRegionView() {
   }
 }
 
+bool VerticalTabStripRegionView::IsZenHidden() const {
+  return state_controller_->IsZenHidden();
+}
+
 std::optional<double> VerticalTabStripRegionView::GetCollapseAnimationPercent()
     const {
   return resize_animation_.is_animating()
@@ -742,6 +746,11 @@ void VerticalTabStripRegionView::ClearTabStripView(views::View* view) {
 void VerticalTabStripRegionView::OnCollapsedStateChanged(
     tabs::VerticalTabStripStateController* state_controller) {
   const bool zen_hidden = state_controller->IsZenHidden();
+  layer()->SetOpacity(zen_hidden ? 0.f : 1.f);
+  if (auto* const background =
+          static_cast<CustomCornersBackground*>(this->background())) {
+    background->SetVisible(!zen_hidden);
+  }
   if (kSkepterSidebarTabsOnly) {
     // Tabs-only sidebar: only show back/forward controls at the top; keep the
     // bottom profile + app menu when expanded.

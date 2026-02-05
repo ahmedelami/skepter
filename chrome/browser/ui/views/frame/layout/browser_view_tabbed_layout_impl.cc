@@ -544,10 +544,13 @@ BrowserViewTabbedLayoutImpl::CalculateProposedLayout(
   // Lay out vertical tab strip if visible.
   int collapsed_vertical_tab_strip_adjustment = 0;
   VerticalTabStripAnimation vertical_tab_strip_animation;
+  bool vertical_tab_strip_zen_hidden = false;
   if (IsParentedTo(views().vertical_tab_strip_region_view,
                    views().browser_view)) {
     gfx::Rect vertical_tab_strip_bounds;
     if (tab_strip_type == TabStripType::kVertical) {
+      vertical_tab_strip_zen_hidden =
+          views().vertical_tab_strip_region_view->IsZenHidden();
       vertical_tab_strip_animation = CalculateVerticalTabStripAnimation(params);
       if (vertical_tab_strip_animation.top_offset > 0) {
         collapsed_vertical_tab_strip_adjustment =
@@ -565,8 +568,10 @@ BrowserViewTabbedLayoutImpl::CalculateProposedLayout(
       if (delegate().GetBrowserWindowState() != WindowState::kFullscreen) {
         IncreasePaddingToMinimum(params, kVerticalTabsGrabHandleSize);
       }
-      params.InsetHorizontal(horizontal_layout.vertical_tab_strip_width,
-                             /*leading=*/true);
+      if (!vertical_tab_strip_zen_hidden) {
+        params.InsetHorizontal(horizontal_layout.vertical_tab_strip_width,
+                               /*leading=*/true);
+      }
     }
     layout.AddChild(views().vertical_tab_strip_region_view,
                     vertical_tab_strip_bounds,
@@ -578,6 +583,7 @@ BrowserViewTabbedLayoutImpl::CalculateProposedLayout(
                    views().browser_view)) {
     gfx::Rect corner_bounds;
     const bool top_corner_visible =
+        !vertical_tab_strip_zen_hidden &&
         vertical_tab_strip_animation.top_outside_corner_percent > 0.0;
 
     // The top corner is drawn when the tabstrip goes all the way to the top.
@@ -597,7 +603,10 @@ BrowserViewTabbedLayoutImpl::CalculateProposedLayout(
   if (IsParentedTo(views().vertical_tab_strip_bottom_corner,
                    views().browser_view)) {
     gfx::Rect corner_bounds;
-    if (tab_strip_type == TabStripType::kVertical) {
+    const bool bottom_corner_visible =
+        tab_strip_type == TabStripType::kVertical &&
+        !vertical_tab_strip_zen_hidden;
+    if (bottom_corner_visible) {
       const auto preferred =
           views().vertical_tab_strip_bottom_corner->GetPreferredSize();
       corner_bounds =
@@ -606,7 +615,7 @@ BrowserViewTabbedLayoutImpl::CalculateProposedLayout(
                     preferred.width(), preferred.height());
     }
     layout.AddChild(views().vertical_tab_strip_bottom_corner, corner_bounds,
-                    tab_strip_type == TabStripType::kVertical);
+                    bottom_corner_visible);
   }
 
   // TODO(crbug.com/469425263): Ensure correct layout calculations for the

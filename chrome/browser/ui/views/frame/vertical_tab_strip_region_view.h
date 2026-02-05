@@ -104,6 +104,8 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
     return bottom_button_container_;
   }
 
+  bool IsZenHidden() const;
+
   void UpdateUrlRow(content::WebContents* contents);
 
   VerticalTabStripController* GetVerticalTabStripController() {

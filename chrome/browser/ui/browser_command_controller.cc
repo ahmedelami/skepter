@@ -733,15 +733,15 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
       break;
 
     // Page-related commands
-    case IDC_SAVE_PAGE:
-#if BUILDFLAG(IS_MAC)
+    case IDC_TOGGLE_VERTICAL_TABS_ZEN_HIDDEN: {
       if (auto* controller =
               tabs::VerticalTabStripStateController::From(browser_);
           controller && controller->ShouldDisplayVerticalTabs()) {
         controller->SetZenHidden(!controller->IsZenHidden());
-        break;
       }
-#endif  // BUILDFLAG(IS_MAC)
+      break;
+    }
+    case IDC_SAVE_PAGE:
       SavePage(browser_);
       break;
     case IDC_TOGGLE_VERTICAL_TABS_COLLAPSED: {
@@ -1524,6 +1524,8 @@ void BrowserCommandController::InitCommandState() {
   command_updater_.UpdateCommandEnabled(IDC_DECLUTTER_TABS, true);
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS, true);
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_COLLAPSED,
+                                        true);
+  command_updater_.UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_ZEN_HIDDEN,
                                         true);
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
