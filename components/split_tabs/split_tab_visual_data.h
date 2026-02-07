@@ -13,7 +13,15 @@ enum class SplitTabLayout {
   kVertical,
   // A tab will stretch out horizontally so one tab in the split will be on top
   // of the other.
-  kHorizontal
+  kHorizontal,
+  // A three-pane "T" layout where the start column is split into two stacked
+  // panes and the end column remains full height.
+  kThreePaneStartStacked,
+  // A three-pane "T" layout where the end column is split into two stacked
+  // panes and the start column remains full height.
+  kThreePaneEndStacked,
+  // A four-pane 2x2 grid.
+  kFourPaneGrid,
 };
 
 // Represents the visual state of a split tab, including its layout type and the
@@ -47,7 +55,8 @@ class SplitTabVisualData {
 
  private:
   SplitTabLayout split_layout_;
-  // ratio of the first split tab's width to the available width.
+  // For vertical-based layouts, ratio of the start column width to the
+  // available width.
   double split_ratio_ = 0.5;
 };
 

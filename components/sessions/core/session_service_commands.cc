@@ -35,6 +35,12 @@ std::string SplitTabLayoutToString(split_tabs::SplitTabLayout split_layout) {
       return "Vertical";
     case split_tabs::SplitTabLayout::kHorizontal:
       return "Horizontal";
+    case split_tabs::SplitTabLayout::kThreePaneStartStacked:
+      return "ThreePaneStartStacked";
+    case split_tabs::SplitTabLayout::kThreePaneEndStacked:
+      return "ThreePaneEndStacked";
+    case split_tabs::SplitTabLayout::kFourPaneGrid:
+      return "FourPaneGrid";
   }
   NOTREACHED();
 }
@@ -43,6 +49,15 @@ split_tabs::SplitTabLayout SplitTabLayoutFromString(
     std::string split_tab_layout_string) {
   if (split_tab_layout_string == "Horizontal") {
     return split_tabs::SplitTabLayout::kHorizontal;
+  }
+  if (split_tab_layout_string == "ThreePaneStartStacked") {
+    return split_tabs::SplitTabLayout::kThreePaneStartStacked;
+  }
+  if (split_tab_layout_string == "ThreePaneEndStacked") {
+    return split_tabs::SplitTabLayout::kThreePaneEndStacked;
+  }
+  if (split_tab_layout_string == "FourPaneGrid") {
+    return split_tabs::SplitTabLayout::kFourPaneGrid;
   }
 
   // By default make the split vertical if input is bad from the pickle.

@@ -2260,8 +2260,12 @@ void BrowserView::OnActiveTabChanged(content::WebContents* old_contents,
       loading_bar_->SetWebContents(nullptr);
     }
 
-    multi_contents_view_->GetInactiveContentsView()->SetWebContents(nullptr);
-    active_contents_view->SetWebContents(nullptr);
+    for (auto* const contents_container_view :
+         multi_contents_view_->contents_container_views()) {
+      if (contents_container_view->GetVisible()) {
+        contents_container_view->contents_view()->SetWebContents(nullptr);
+      }
+    }
   }
 
   // Do this before updating InfoBarContainer as the InfoBarContainer may
@@ -3742,6 +3746,144 @@ content::KeyboardEventProcessingResult BrowserView::PreHandleKeyboardEvent(
   ui::Accelerator accelerator =
       ui::GetAcceleratorFromNativeWebKeyboardEvent(event);
 
+#if BUILDFLAG(IS_MAC)
+  // Vim-style pane focus movement for split tabs.
+  if (event.GetType() == blink::WebInputEvent::Type::kRawKeyDown &&
+      multi_contents_view_ && multi_contents_view_->IsInSplitView()) {
+    const int modifiers = accelerator.modifiers();
+    const bool only_control =
+        (modifiers & ui::EF_CONTROL_DOWN) &&
+        !(modifiers &
+          (ui::EF_COMMAND_DOWN | ui::EF_ALT_DOWN | ui::EF_SHIFT_DOWN));
+    if (only_control) {
+      enum class SplitFocusDirection { kLeft, kRight, kUp, kDown };
+      const auto direction = [&]() -> std::optional<SplitFocusDirection> {
+        switch (accelerator.key_code()) {
+          case ui::VKEY_H:
+            return SplitFocusDirection::kLeft;
+          case ui::VKEY_J:
+            return SplitFocusDirection::kDown;
+          case ui::VKEY_K:
+            return SplitFocusDirection::kUp;
+          case ui::VKEY_L:
+            return SplitFocusDirection::kRight;
+          default:
+            return std::nullopt;
+        }
+      }();
+
+      if (direction.has_value()) {
+        ContentsContainerView* const from_container =
+            multi_contents_view_->GetActiveContentsContainerView();
+        ContentsContainerView* best_container = nullptr;
+
+        if (from_container) {
+          const gfx::Rect from_bounds = from_container->bounds();
+          const gfx::Point from_center = from_bounds.CenterPoint();
+          const auto Abs = [](int v) { return v < 0 ? -v : v; };
+          bool best_set = false;
+          int best_primary = 0;
+          int best_secondary = 0;
+          int best_tiebreak = 0;
+
+          for (ContentsContainerView* const candidate_container :
+               multi_contents_view_->contents_container_views()) {
+            if (!candidate_container || candidate_container == from_container ||
+                !candidate_container->GetVisible()) {
+              continue;
+            }
+
+            ContentsWebView* const candidate_contents_view =
+                candidate_container->contents_view();
+            if (!candidate_contents_view || !candidate_contents_view->web_contents()) {
+              continue;
+            }
+
+            const gfx::Rect candidate_bounds = candidate_container->bounds();
+            const gfx::Point candidate_center = candidate_bounds.CenterPoint();
+            const int dx = candidate_center.x() - from_center.x();
+            const int dy = candidate_center.y() - from_center.y();
+
+            int primary = 0;
+            int secondary = 0;
+            int tiebreak = 0;
+            bool matches = false;
+
+            switch (direction.value()) {
+              case SplitFocusDirection::kLeft:
+                matches =
+                    dx < 0 && candidate_bounds.y() < from_bounds.bottom() &&
+                    candidate_bounds.bottom() > from_bounds.y();
+                primary = -dx;
+                secondary = Abs(dy);
+                tiebreak = candidate_center.y();  // Prefer top-most.
+                break;
+              case SplitFocusDirection::kRight:
+                matches =
+                    dx > 0 && candidate_bounds.y() < from_bounds.bottom() &&
+                    candidate_bounds.bottom() > from_bounds.y();
+                primary = dx;
+                secondary = Abs(dy);
+                tiebreak = candidate_center.y();  // Prefer top-most.
+                break;
+              case SplitFocusDirection::kUp:
+                matches = dy < 0 && candidate_bounds.x() < from_bounds.right() &&
+                          candidate_bounds.right() > from_bounds.x();
+                primary = -dy;
+                secondary = Abs(dx);
+                tiebreak = candidate_center.x();  // Prefer left-most.
+                break;
+              case SplitFocusDirection::kDown:
+                matches = dy > 0 && candidate_bounds.x() < from_bounds.right() &&
+                          candidate_bounds.right() > from_bounds.x();
+                primary = dy;
+                secondary = Abs(dx);
+                tiebreak = candidate_center.x();  // Prefer left-most.
+                break;
+            }
+
+            if (!matches) {
+              continue;
+            }
+
+            if (!best_set || primary < best_primary ||
+                (primary == best_primary && secondary < best_secondary) ||
+                (primary == best_primary && secondary == best_secondary &&
+                 tiebreak < best_tiebreak)) {
+              best_set = true;
+              best_primary = primary;
+              best_secondary = secondary;
+              best_tiebreak = tiebreak;
+              best_container = candidate_container;
+            }
+          }
+        }
+
+        if (best_container) {
+          content::WebContents* const best_contents =
+              best_container->contents_view()->web_contents();
+          const int tab_index =
+              browser_->tab_strip_model()->GetIndexOfWebContents(best_contents);
+          if (tab_index != TabStripModel::kNoTab) {
+            browser_->tab_strip_model()->ActivateTabAt(tab_index);
+            if (!GetWidget()->IsActive()) {
+              GetFocusManager()->SetStoredFocusView(
+                  best_container->contents_view());
+              restore_focus_on_activation_ = true;
+            } else {
+              best_container->contents_view()->RequestFocus();
+            }
+          }
+        }
+
+        // Always consume Ctrl+H/J/K/L in split view so web content doesn't
+        // receive control characters (and to keep Vim-style behavior).
+        return content::KeyboardEventProcessingResult::HANDLED;
+      }
+    }
+  }
+#endif  // BUILDFLAG(IS_MAC)
+
   // What we have to do here is as follows:
   // - If the |browser_| is for an app, do nothing.
   // - On CrOS if |accelerator| is deprecated, we allow web contents to consume
@@ -4401,19 +4543,26 @@ std::u16string BrowserView::GetAccessibleTabLabel(int index,
 int BrowserView::GetAccessibleTabLabelFormatStringForSplit(
     split_tabs::SplitTabLayout layout,
     int tab_index_in_split) const {
-  switch (layout) {
-    case split_tabs::SplitTabLayout::kVertical:
-      switch (tab_index_in_split) {
-        case 0:
-          return IDS_TAB_AX_LABEL_SPLIT_TAB_LEFT_VIEW_FORMAT;
-        case 1:
-          return IDS_TAB_AX_LABEL_SPLIT_TAB_RIGHT_VIEW_FORMAT;
-        default:
-          NOTREACHED();
-      }
-    default:
-      NOTREACHED();
+  if (tab_index_in_split < 0) {
+    return IDS_TAB_AX_LABEL_SPLIT_TAB_LEFT_VIEW_FORMAT;
   }
+
+  const bool is_left_view = [&]() {
+    switch (layout) {
+      case split_tabs::SplitTabLayout::kVertical:
+      case split_tabs::SplitTabLayout::kHorizontal:
+        return tab_index_in_split == 0;
+      case split_tabs::SplitTabLayout::kThreePaneStartStacked:
+        return tab_index_in_split <= 1;
+      case split_tabs::SplitTabLayout::kThreePaneEndStacked:
+        return tab_index_in_split == 0;
+      case split_tabs::SplitTabLayout::kFourPaneGrid:
+        return tab_index_in_split <= 1;
+    }
+  }();
+
+  return is_left_view ? IDS_TAB_AX_LABEL_SPLIT_TAB_LEFT_VIEW_FORMAT
+                      : IDS_TAB_AX_LABEL_SPLIT_TAB_RIGHT_VIEW_FORMAT;
 }
 
 std::vector<views::NativeViewHost*>
@@ -4987,6 +5136,10 @@ void BrowserView::ShowSplitView(bool focus_active_view) {
       browser_->tab_strip_model()->GetSplitData(split_tab_id.value());
 
   std::vector<tabs::TabInterface*> split_tabs = split_data->ListTabs();
+  CHECK_LE(split_tabs.size(), 4U);
+
+  multi_contents_view_->SetSplitViewLayout(
+      split_data->visual_data()->split_layout(), split_tabs.size());
 
   for (size_t i = 0; tabs::TabInterface* tab : split_tabs) {
     multi_contents_view_->SetWebContentsAtIndex(tab->GetContents(), i++);
@@ -5037,9 +5190,19 @@ void BrowserView::UpdateActiveTabInSplitView() {
   // When active tab changes inside a split, it's generally due to focus change.
   // However, there are cases where inactive tab can be activated without a
   // focus change e.g. using tab shortcuts and in these cases update focus.
-  if (GetWidget()->IsActive() &&
-      multi_contents_view_->GetInactiveContentsView()->HasFocus()) {
-    multi_contents_view_->GetActiveContentsView()->RequestFocus();
+  if (GetWidget()->IsActive()) {
+    for (auto* const contents_container_view :
+         multi_contents_view_->contents_container_views()) {
+      if (!contents_container_view->GetVisible()) {
+        continue;
+      }
+      auto* const contents_view = contents_container_view->contents_view();
+      if (contents_view->HasFocus() &&
+          contents_view != multi_contents_view_->GetActiveContentsView()) {
+        multi_contents_view_->GetActiveContentsView()->RequestFocus();
+        break;
+      }
+    }
   }
 }
 
@@ -5060,9 +5223,16 @@ void BrowserView::UpdateContentsInSplitView(
   const bool active_view_has_focus =
       multi_contents_view_->GetActiveContentsView()->HasFocus();
 
+  multi_contents_view_->SetSplitViewLayout(split_data->visual_data()->split_layout(),
+                                          split_data->ListTabs().size());
+
   // Clear web contents for prev_tabs in preparation to reset for new_tabs.
-  multi_contents_view_->GetInactiveContentsView()->SetWebContents(nullptr);
-  multi_contents_view_->GetActiveContentsView()->SetWebContents(nullptr);
+  for (auto* const contents_container_view :
+       multi_contents_view_->contents_container_views()) {
+    if (contents_container_view->GetVisible()) {
+      contents_container_view->contents_view()->SetWebContents(nullptr);
+    }
+  }
 
   // Clear focus to avoid reentrency when setting the web contents within
   // MultiContentsView. See crbug.com/458189541 and crbug.com/447369458
@@ -5089,11 +5259,24 @@ void BrowserView::UpdateContentsInSplitView(
 
 bool BrowserView::IsTabChangeInSplitView(content::WebContents* old_contents,
                                          content::WebContents* new_contents) {
-  return multi_contents_view_->IsInSplitView() &&
-         multi_contents_view_->GetActiveContentsView()->web_contents() ==
-             old_contents &&
-         multi_contents_view_->GetInactiveContentsView()->web_contents() ==
-             new_contents;
+  if (!multi_contents_view_->IsInSplitView() || !old_contents || !new_contents) {
+    return false;
+  }
+
+  bool old_is_displayed = false;
+  bool new_is_displayed = false;
+  for (auto* const contents_container_view :
+       multi_contents_view_->contents_container_views()) {
+    if (!contents_container_view->GetVisible()) {
+      continue;
+    }
+    content::WebContents* const contents =
+        contents_container_view->contents_view()->web_contents();
+    old_is_displayed |= contents == old_contents;
+    new_is_displayed |= contents == new_contents;
+  }
+
+  return old_is_displayed && new_is_displayed;
 }
 
 void BrowserView::UpdateTabModalDialogHost() {
@@ -5133,10 +5316,15 @@ void BrowserView::MaybeUpdateStoredFocusForWebContents(
 std::vector<ContentsWebView*> BrowserView::GetAllVisibleContentsWebViews() {
   std::vector<ContentsWebView*> contents_views;
   contents_views.push_back(multi_contents_view_->GetActiveContentsView());
-  ContentsWebView* inactive_contents_view =
-      multi_contents_view_->GetInactiveContentsView();
-  if (multi_contents_view_->IsInSplitView()) {
-    contents_views.push_back(inactive_contents_view);
+  for (auto* const contents_container_view :
+       multi_contents_view_->contents_container_views()) {
+    if (!contents_container_view->GetVisible()) {
+      continue;
+    }
+    ContentsWebView* const contents_view = contents_container_view->contents_view();
+    if (contents_view != multi_contents_view_->GetActiveContentsView()) {
+      contents_views.push_back(contents_view);
+    }
   }
   return contents_views;
 }

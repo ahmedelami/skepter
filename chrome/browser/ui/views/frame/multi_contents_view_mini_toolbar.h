@@ -8,9 +8,12 @@
 #include <optional>
 
 #include "base/memory/raw_ptr.h"
+#include "base/timer/timer.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/gfx/geometry/point.h"
+#include "ui/gfx/geometry/vector2d.h"
 #include "ui/views/view.h"
 
 class ContentsWebView;
@@ -58,6 +61,10 @@ class MultiContentsViewMiniToolbar : public views::View,
                       TabChangeType change_type) override;
 
   // View:
+  bool OnMousePressed(const ui::MouseEvent& event) override;
+  bool OnMouseDragged(const ui::MouseEvent& event) override;
+  void OnMouseReleased(const ui::MouseEvent& event) override;
+  void OnMouseCaptureLost() override;
   void OnPaint(gfx::Canvas* canvas) override;
   void OnThemeChanged() override;
 
@@ -71,6 +78,11 @@ class MultiContentsViewMiniToolbar : public views::View,
   // Updates the favicon and domain based on the provided |tab_data|.
   void UpdateContents(TabRendererData tab_data);
   void UpdateFavicon(TabRendererData tab_data);
+  std::optional<int> GetSwapTargetForDrag(const gfx::Vector2d& drag_delta) const;
+  void UpdateDragVisual(const ui::MouseEvent& event);
+  void ResetDragVisual();
+  void ClearDragSwapTargetHighlight();
+  void ResetDragState();
 
   void OpenSplitViewMenu();
   void CloseCurrentView();
@@ -89,6 +101,9 @@ class MultiContentsViewMiniToolbar : public views::View,
   base::CallbackListSubscription web_contents_attached_subscription_;
   base::CallbackListSubscription web_contents_detached_subscription_;
   std::optional<base::CallbackListSubscription> tab_alert_status_subscription_;
+  std::optional<gfx::Point> drag_start_location_;
+  bool drag_visual_active_ = false;
+  base::OneShotTimer post_swap_target_highlight_clear_timer_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_MULTI_CONTENTS_VIEW_MINI_TOOLBAR_H_

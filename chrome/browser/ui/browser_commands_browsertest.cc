@@ -858,6 +858,43 @@ IN_PROC_BROWSER_TEST_F(BrowserCommandsTest,
   ASSERT_EQ(tab_count, browser()->tab_strip_model()->count());
 }
 
+IN_PROC_BROWSER_TEST_F(BrowserCommandsTest, AddSplitPaneProgression2To4) {
+  TabStripModel* const tab_strip_model = browser()->tab_strip_model();
+
+  chrome::AddSplitPaneAndFocusLocationBar(browser());
+  {
+    tabs::TabInterface* const tab = tab_strip_model->GetActiveTab();
+    ASSERT_TRUE(tab->IsSplit());
+    split_tabs::SplitTabData* const split_data =
+        tab_strip_model->GetSplitData(tab->GetSplit().value());
+    EXPECT_EQ(split_data->ListTabs().size(), 2U);
+    EXPECT_EQ(split_data->visual_data()->split_layout(),
+              split_tabs::SplitTabLayout::kVertical);
+  }
+
+  chrome::AddSplitPaneAndFocusLocationBar(browser());
+  {
+    tabs::TabInterface* const tab = tab_strip_model->GetActiveTab();
+    ASSERT_TRUE(tab->IsSplit());
+    split_tabs::SplitTabData* const split_data =
+        tab_strip_model->GetSplitData(tab->GetSplit().value());
+    EXPECT_EQ(split_data->ListTabs().size(), 3U);
+    EXPECT_EQ(split_data->visual_data()->split_layout(),
+              split_tabs::SplitTabLayout::kThreePaneEndStacked);
+  }
+
+  chrome::AddSplitPaneAndFocusLocationBar(browser());
+  {
+    tabs::TabInterface* const tab = tab_strip_model->GetActiveTab();
+    ASSERT_TRUE(tab->IsSplit());
+    split_tabs::SplitTabData* const split_data =
+        tab_strip_model->GetSplitData(tab->GetSplit().value());
+    EXPECT_EQ(split_data->ListTabs().size(), 4U);
+    EXPECT_EQ(split_data->visual_data()->split_layout(),
+              split_tabs::SplitTabLayout::kFourPaneGrid);
+  }
+}
+
 IN_PROC_BROWSER_TEST_F(BrowserCommandsTest, AddingToReadingListOpensToast) {
   GURL main_url(https_server_.GetURL("a.test", "/iframe.html"));
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), main_url));

@@ -6,6 +6,7 @@
 
 #include "base/i18n/rtl.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkMatrix.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkPathBuilder.h"
@@ -41,11 +42,11 @@ int ContentsContainerOutline::GetThickness(bool is_highlighted) {
 // static
 ui::ColorId ContentsContainerOutline::GetColor(bool is_active,
                                                bool is_highlighted) {
-  if (is_active) {
-    return is_highlighted ? kColorMultiContentsViewHighlightContentOutline
-                          : kColorMultiContentsViewActiveContentOutline;
+  if (is_highlighted) {
+    return kColorMultiContentsViewHighlightContentOutline;
   }
-  return kColorMultiContentsViewInactiveContentOutline;
+  return is_active ? kColorMultiContentsViewActiveContentOutline
+                   : kColorMultiContentsViewInactiveContentOutline;
 }
 
 // static
@@ -128,10 +129,13 @@ void ContentsContainerOutline::UpdateState(bool is_active,
 
 void ContentsContainerOutline::OnPaint(gfx::Canvas* canvas) {
   // Draw the bordering stroke.
+  const int thickness = GetThickness(is_highlighted_);
+  const SkColor stroke_color =
+      GetColorProvider()->GetColor(GetColor(is_active_, is_highlighted_));
+
   cc::PaintFlags flags;
-  flags.setStrokeWidth(GetThickness(is_highlighted_));
-  flags.setColor(
-      GetColorProvider()->GetColor(GetColor(is_active_, is_highlighted_)));
+  flags.setStrokeWidth(thickness);
+  flags.setColor(stroke_color);
   flags.setStyle(cc::PaintFlags::kStroke_Style);
   flags.setAntiAlias(true);
 
@@ -150,6 +154,15 @@ void ContentsContainerOutline::OnPaint(gfx::Canvas* canvas) {
 
   SkPath path =
       GetPath(local_bounds, corner_radius, kCornerRadius, mini_toolbar_size);
+
+  if (is_highlighted_) {
+    cc::PaintFlags glow_flags = flags;
+    // A low-alpha, wider stroke reads as a subtle "glow" without needing a
+    // blur filter.
+    glow_flags.setStrokeWidth(thickness + 4);
+    glow_flags.setColor(SkColorSetA(stroke_color, 90));
+    canvas->DrawPath(path, glow_flags);
+  }
 
   canvas->DrawPath(path, flags);
 }

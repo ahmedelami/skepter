@@ -4,11 +4,13 @@
 
 #include "chrome/browser/ui/views/frame/multi_contents_view_mini_toolbar.h"
 
+#include <cstdlib>
 #include <optional>
 
 #include "base/i18n/rtl.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
+#include "base/time/time.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/favicon/favicon_utils.h"
@@ -23,6 +25,7 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/contents_container_outline.h"
 #include "chrome/browser/ui/views/frame/contents_web_view.h"
+#include "chrome/browser/ui/views/frame/multi_contents_view.h"
 #include "chrome/browser/ui/views/frame/top_container_background.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
@@ -37,6 +40,8 @@
 #include "ui/base/models/image_model.h"
 #include "ui/base/models/menu_model.h"
 #include "ui/base/mojom/menu_source_type.mojom.h"
+#include "ui/base/cursor/cursor.h"
+#include "ui/base/cursor/mojom/cursor_type.mojom-shared.h"
 #include "ui/color/color_provider.h"
 #include "ui/compositor/layer.h"
 #include "ui/gfx/geometry/insets.h"
@@ -56,6 +61,8 @@
 namespace {
 constexpr int kMiniToolbarContentPadding = 4;
 constexpr int kMiniToolbarDomainMaxWidth = 140;
+constexpr base::TimeDelta kPostSwapTargetHighlightClearDelay =
+    base::Milliseconds(200);
 
 tabs::TabInterface* GetTabInterface(content::WebContents* web_contents) {
   return web_contents ? tabs::TabInterface::MaybeGetFromContents(web_contents)
@@ -68,11 +75,6 @@ bool IsNTP(const GURL& url) {
          search::IsNTPURL(url) || search::IsSplitViewNewTabPage(url);
 }
 
-void SetAccessibleNameAndTooltip(views::View* view, int string_id) {
-  std::u16string string = l10n_util::GetStringUTF16(string_id);
-  view->SetAccessibleName(string);
-  view->SetTooltipText(string);
-}
 }  // namespace
 
 MultiContentsViewMiniToolbar::MultiContentsViewMiniToolbar(
@@ -115,23 +117,18 @@ MultiContentsViewMiniToolbar::MultiContentsViewMiniToolbar(
                                       icon_flex_spec.WithOrder(2));
 
   image_button_ = AddChildView(views::CreateVectorImageButtonWithNativeTheme(
-      base::RepeatingClosure(), kBrowserToolsChromeRefreshIcon, 16,
+      base::RepeatingClosure(), kDragHandleIcon, 16,
       kColorMultiContentsViewMiniToolbarForeground));
-  SetAccessibleNameAndTooltip(image_button_,
-                              IDS_ACCNAME_SPLIT_VIEW_MINI_TOOLBAR_MENU_BUTTON);
-  image_button_->SetButtonController(
-      std::make_unique<views::MenuButtonController>(
-          image_button_,
-          base::BindRepeating(&MultiContentsViewMiniToolbar::OpenSplitViewMenu,
-                              base::Unretained(this)),
-          std::make_unique<views::Button::DefaultButtonControllerDelegate>(
-              image_button_)));
+  // The mini toolbar itself handles drag events; this icon is a visual affordance
+  // only (not a clickable menu button).
+  image_button_->SetCanProcessEventsWithinSubtree(false);
+  SetAccessibleName(u"Drag to swap panes");
+  SetTooltipText(u"Drag to swap panes");
   image_button_->SetProperty(
       views::kFlexBehaviorKey,
       views::FlexSpecification(views::MinimumFlexSizeRule::kPreferred,
                                views::MaximumFlexSizeRule::kPreferred)
           .WithOrder(1));
-  views::InstallCircleHighlightPathGenerator(image_button_);
 
   // Update minitoolbar contents.
   std::optional<TabRendererData> tab_data = GetTabData();
@@ -162,13 +159,7 @@ void MultiContentsViewMiniToolbar::UpdateState(bool is_active,
   const int contents_container_outline_thickness =
       ContentsContainerOutline::GetThickness(is_highlighted);
 
-  gfx::Insets kInactiveInteriorMargins = gfx::Insets::TLBR(
-      ContentsContainerOutline::kCornerRadius + kMiniToolbarContentPadding,
-      ContentsContainerOutline::kCornerRadius * 2,
-      contents_container_outline_thickness,
-      contents_container_outline_thickness);
-
-  // Reduce the margins in the case of showing only the close or menu button.
+  // Icon-only drag handle affordance.
   gfx::Insets kActiveInteriorMargins = gfx::Insets::TLBR(
       ContentsContainerOutline::kCornerRadius + kMiniToolbarContentPadding,
       ContentsContainerOutline::kCornerRadius + kMiniToolbarContentPadding,
@@ -176,14 +167,16 @@ void MultiContentsViewMiniToolbar::UpdateState(bool is_active,
       contents_container_outline_thickness);
 
   static_cast<views::FlexLayout*>(GetLayoutManager())
-      ->SetInteriorMargin(is_active ? kActiveInteriorMargins
-                                    : kInactiveInteriorMargins);
+      ->SetInteriorMargin(kActiveInteriorMargins);
 
-  SetVisible(!is_highlighted);
+  // Only hide the mini toolbar when the *active* contents are highlighted.
+  // This allows us to highlight the destination outline during drag-to-swap
+  // without making the target mini toolbar disappear.
+  SetVisible(!(is_active && is_highlighted));
 
-  favicon_->SetVisible(!is_active);
-  domain_label_->SetVisible(!is_active);
-  alert_state_indicator_->SetVisible(!is_active);
+  favicon_->SetVisible(false);
+  domain_label_->SetVisible(false);
+  alert_state_indicator_->SetVisible(false);
 }
 
 void MultiContentsViewMiniToolbar::UpdateContents() {
@@ -218,6 +211,54 @@ void MultiContentsViewMiniToolbar::OnTabChangedAt(tabs::TabInterface* tab,
   TabStripModel* model = browser_view_->browser()->tab_strip_model();
   TabRendererData tab_data = TabRendererData::FromTabInModel(model, index);
   UpdateContents(tab_data);
+}
+
+bool MultiContentsViewMiniToolbar::OnMousePressed(const ui::MouseEvent& event) {
+  if (!event.IsOnlyLeftMouseButton()) {
+    return false;
+  }
+
+  ResetDragState();
+  drag_start_location_ = event.location();
+  return true;
+}
+
+bool MultiContentsViewMiniToolbar::OnMouseDragged(const ui::MouseEvent& event) {
+  if (!drag_start_location_.has_value()) {
+    return false;
+  }
+  UpdateDragVisual(event);
+  return true;
+}
+
+void MultiContentsViewMiniToolbar::OnMouseReleased(const ui::MouseEvent& event) {
+  if (drag_start_location_.has_value()) {
+    const gfx::Vector2d drag_delta =
+        event.location() - drag_start_location_.value();
+    const std::optional<int> swap_target = GetSwapTargetForDrag(drag_delta);
+    if (swap_target.has_value()) {
+      base::RecordAction(
+          base::UserMetricsAction("DesktopSplitView_MiniToolbarDragSwap"));
+      if (auto* multi_contents_view = browser_view_->multi_contents_view()) {
+        multi_contents_view->SetDragSwapTargetHighlightIndex(swap_target);
+        multi_contents_view->OnSwap();
+        post_swap_target_highlight_clear_timer_.Start(
+            FROM_HERE, kPostSwapTargetHighlightClearDelay,
+            base::BindOnce(
+                &MultiContentsViewMiniToolbar::ClearDragSwapTargetHighlight,
+                base::Unretained(this)));
+      }
+    } else {
+      ClearDragSwapTargetHighlight();
+    }
+  }
+
+  ResetDragVisual();
+  drag_start_location_.reset();
+}
+
+void MultiContentsViewMiniToolbar::OnMouseCaptureLost() {
+  ResetDragState();
 }
 
 void MultiContentsViewMiniToolbar::OnPaint(gfx::Canvas* canvas) {
@@ -330,6 +371,92 @@ void MultiContentsViewMiniToolbar::UpdateFavicon(TabRendererData tab_data) {
     }
   }
   favicon_->SetImage(favicon);
+}
+
+std::optional<int> MultiContentsViewMiniToolbar::GetSwapTargetForDrag(
+    const gfx::Vector2d& drag_delta) const {
+  if (!views::View::ExceededDragThreshold(drag_delta)) {
+    return std::nullopt;
+  }
+  if (std::abs(drag_delta.x()) <= std::abs(drag_delta.y())) {
+    return std::nullopt;
+  }
+
+  MultiContentsView* const multi_contents_view =
+      browser_view_->multi_contents_view();
+  if (!multi_contents_view || !multi_contents_view->IsInSplitView() ||
+      !parent()) {
+    return std::nullopt;
+  }
+
+  if (multi_contents_view->GetSplitPaneCount() != 2U) {
+    return std::nullopt;
+  }
+
+  const auto contents_container_views =
+      multi_contents_view->contents_container_views();
+  if (contents_container_views.size() < 2) {
+    return std::nullopt;
+  }
+
+  const bool is_start_contents = parent() == contents_container_views[0];
+  const bool is_end_contents = parent() == contents_container_views[1];
+  if (!is_start_contents && !is_end_contents) {
+    return std::nullopt;
+  }
+  const bool moving_toward_end =
+      base::i18n::IsRTL() ? drag_delta.x() < 0 : drag_delta.x() > 0;
+
+  if (is_start_contents && moving_toward_end) {
+    return 1;
+  }
+  if (is_end_contents && !moving_toward_end) {
+    return 0;
+  }
+  return std::nullopt;
+}
+
+void MultiContentsViewMiniToolbar::UpdateDragVisual(const ui::MouseEvent& event) {
+  CHECK(drag_start_location_.has_value());
+
+  const gfx::Vector2d drag_delta =
+      event.location() - drag_start_location_.value();
+  if (!drag_visual_active_ && views::View::ExceededDragThreshold(drag_delta)) {
+    drag_visual_active_ = true;
+    layer()->SetOpacity(0.85f);
+    if (auto* widget = GetWidget()) {
+      widget->SetCursor(ui::Cursor(ui::mojom::CursorType::kGrabbing));
+    }
+  }
+
+  const std::optional<int> swap_target = GetSwapTargetForDrag(drag_delta);
+  if (auto* multi_contents_view = browser_view_->multi_contents_view()) {
+    multi_contents_view->SetDragSwapTargetHighlightIndex(swap_target);
+  }
+}
+
+void MultiContentsViewMiniToolbar::ResetDragVisual() {
+  if (!drag_visual_active_) {
+    return;
+  }
+  drag_visual_active_ = false;
+  layer()->SetOpacity(1.0f);
+  if (auto* widget = GetWidget()) {
+    widget->SetCursor(ui::Cursor());
+  }
+}
+
+void MultiContentsViewMiniToolbar::ClearDragSwapTargetHighlight() {
+  if (auto* multi_contents_view = browser_view_->multi_contents_view()) {
+    multi_contents_view->SetDragSwapTargetHighlightIndex(std::nullopt);
+  }
+}
+
+void MultiContentsViewMiniToolbar::ResetDragState() {
+  post_swap_target_highlight_clear_timer_.Stop();
+  ClearDragSwapTargetHighlight();
+  ResetDragVisual();
+  drag_start_location_.reset();
 }
 
 void MultiContentsViewMiniToolbar::OpenSplitViewMenu() {

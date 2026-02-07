@@ -14,6 +14,7 @@
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/contents_container_view.h"
+#include "components/split_tabs/split_tab_visual_data.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
@@ -38,12 +39,13 @@ class RoundedCornersF;
 }  // namespace gfx
 
 namespace views {
+class ImageView;
 class WebView;
 }  // namespace views
 
 class MultiContentsBackgroundView;
 
-// MultiContentsView shows up to two contents web views side by side, and
+// MultiContentsView shows up to four contents web views in a split layout, and
 // manages their layout relative to each other.
 class MultiContentsView : public views::View,
                           public views::ResizeAreaDelegate,
@@ -92,14 +94,18 @@ class MultiContentsView : public views::View,
   void CloseSplitView();
 
   // Assigns the given |web_contents| to the ContentsContainerView's
-  // ContentsWebView at |index| in contents_container_views_. |index| must be
-  // either 0 or 1 as we currently only support two contents. If |index| is 1
-  // and we are not currently in a split view, displays the split views.
+  // ContentsWebView at |index| in contents_container_views_. If |index| is > 0
+  // and we are not currently in a split view, displays the split view.
   void SetWebContentsAtIndex(content::WebContents* web_contents, int index);
 
   // Sets the index of the active contents view within contents_views_.
   void SetActiveIndex(int index);
   int GetActiveIndex() const { return active_index_; }
+
+  // Configures the split layout and ensures the correct number of panes are
+  // visible. `pane_count` is clamped to [1, 4].
+  void SetSplitViewLayout(split_tabs::SplitTabLayout layout, size_t pane_count);
+  size_t GetSplitPaneCount() const { return split_pane_count_; }
 
   // Updates the size of the contents views based on |ratio|.
   void UpdateSplitRatio(double ratio);
@@ -115,6 +121,11 @@ class MultiContentsView : public views::View,
 
   // If in a split view, swaps the order of the two contents views.
   void OnSwap();
+
+  // While dragging the split mini-toolbar, highlights the destination pane that
+  // would receive the swap on release. Pass `std::nullopt` to restore normal
+  // outline state.
+  void SetDragSwapTargetHighlightIndex(std::optional<int> index);
 
   // If the split view is being resized.
   bool IsSplitResizing() const {
@@ -260,6 +271,9 @@ class MultiContentsView : public views::View,
   // each other.
   raw_ptr<MultiContentsResizeArea> resize_area_ = nullptr;
 
+  // Indicates an armed drag-to-swap gesture when dragging the mini-toolbar.
+  raw_ptr<views::ImageView> drag_swap_indicator_ = nullptr;
+
   // The views that are shown for entering split view. E.g., this is shown when
   // the user drags a link to the edge of the contents view.
   raw_ptr<MultiContentsDropTargetView> drop_target_view_ = nullptr;
@@ -271,6 +285,9 @@ class MultiContentsView : public views::View,
 
   // The index in contents_views_ of the active contents view.
   int active_index_ = 0;
+
+  split_tabs::SplitTabLayout split_layout_ = split_tabs::SplitTabLayout::kVertical;
+  size_t split_pane_count_ = 1;
 
   // Current ratio of |contents_views_|'s first ContentsContainerView's width /
   // overall contents view width.
@@ -285,6 +302,7 @@ class MultiContentsView : public views::View,
   gfx::Insets end_contents_view_inset_;
 
   bool active_contents_view_highlighted_ = false;
+  std::optional<int> drag_swap_target_highlight_index_ = std::nullopt;
 
   std::optional<int> min_contents_width_for_testing_ = std::nullopt;
 

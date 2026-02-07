@@ -231,24 +231,30 @@ fi
 
 min_log_size=100000
 ninja_log="${out_dir}/.ninja_log"
+state_log="$ninja_log"
+state_log_desc=".ninja_log"
+if [[ $use_siso -eq 1 ]]; then
+  state_log="${out_dir}/.siso_deps"
+  state_log_desc=".siso_deps"
+fi
 if [[ $backup_only -eq 0 ]]; then
-  if [[ ! -f "$ninja_log" ]]; then
+  if [[ ! -f "$state_log" ]]; then
     if [[ $allow_large -eq 0 ]]; then
-      echo "Missing ${out_dir_rel}/.ninja_log; this out dir looks cold and may trigger a huge rebuild." >&2
+      echo "Missing ${out_dir_rel}/${state_log_desc}; this out dir looks cold and may trigger a huge rebuild." >&2
       echo "Re-run with --allow-large to proceed." >&2
       exit 1
     fi
   else
-    log_size="$(stat -f%z "$ninja_log" 2>/dev/null || echo 0)"
+    log_size="$(stat -f%z "$state_log" 2>/dev/null || echo 0)"
     if [[ "$log_size" -lt "$min_log_size" && $allow_large -eq 0 ]]; then
-      echo "${out_dir_rel}/.ninja_log is very small (${log_size} bytes); this looks like a cold/reset out dir." >&2
+      echo "${out_dir_rel}/${state_log_desc} is very small (${log_size} bytes); this looks like a cold/reset out dir." >&2
       echo "Refusing to proceed without --allow-large." >&2
       exit 1
     fi
   fi
 else
-  if [[ ! -f "$ninja_log" ]]; then
-    echo "Warning: missing ${out_dir_rel}/.ninja_log; snapshot will not include it." >&2
+  if [[ ! -f "$state_log" ]]; then
+    echo "Warning: missing ${out_dir_rel}/${state_log_desc}; snapshot will not include it." >&2
   fi
 fi
 

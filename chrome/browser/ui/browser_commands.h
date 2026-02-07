@@ -163,6 +163,7 @@ void PinTab(Browser* browser);
 void GroupTab(Browser* browser);
 void NewSplitTab(BrowserWindowInterface* browser,
                  split_tabs::SplitTabCreatedSource source);
+void AddSplitPaneAndFocusLocationBar(Browser* browser);
 
 // Tab group commands
 // These values are persisted to logs. Entries should not be renumbered

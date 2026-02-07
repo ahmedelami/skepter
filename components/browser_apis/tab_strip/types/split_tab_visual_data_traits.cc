@@ -8,6 +8,9 @@ MojoSplitLayout mojo::EnumTraits<MojoSplitLayout, NativeSplitLayout>::ToMojom(
     NativeSplitLayout input) {
   switch (input) {
     case NativeSplitLayout::kVertical:
+    case NativeSplitLayout::kThreePaneStartStacked:
+    case NativeSplitLayout::kThreePaneEndStacked:
+    case NativeSplitLayout::kFourPaneGrid:
       return MojoSplitLayout::kVertical;
     case NativeSplitLayout::kHorizontal:
       return MojoSplitLayout::kHorizontal;

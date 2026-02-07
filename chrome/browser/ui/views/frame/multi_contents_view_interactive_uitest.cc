@@ -673,6 +673,124 @@ IN_PROC_BROWSER_TEST_F(MultiContentsViewUiTest,
 }
 
 IN_PROC_BROWSER_TEST_F(MultiContentsViewUiTest,
+                       MiniToolbarDragRightSwapsStartSplitView) {
+  using MultiContentsViewSwapObserver =
+      views::test::PollingViewObserver<bool, MultiContentsView>;
+  DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(MultiContentsViewSwapObserver,
+                                      kMultiContentsViewSwapObserver);
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsId);
+  RunTestSequence(
+      InstrumentTab(kWebContentsId),
+      NavigateWebContents(kWebContentsId, GURL(chrome::kChromeUINewTabURL)),
+      CreateTabsAndEnterSplitView(), Check([&]() {
+        return multi_contents_view()
+                   ->start_contents_view_for_testing()
+                   ->GetWebContents()
+                   ->GetVisibleURL() == GURL(chrome::kChromeUISettingsURL);
+      }),
+      Check([&]() {
+        return multi_contents_view()
+                   ->end_contents_view_for_testing()
+                   ->GetWebContents()
+                   ->GetVisibleURL() == GURL(chrome::kChromeUINewTabURL);
+      }),
+      CheckResult([this]() { return tab_strip_model()->active_index(); }, 0),
+      Do([&]() {
+        auto* mini_toolbar = multi_contents_view()->mini_toolbar_for_testing(0);
+        gfx::Point center(mini_toolbar->width() / 2, mini_toolbar->height() / 2);
+        gfx::Point drag_location(center.x() + 50, center.y());
+        ui::MouseEvent press_event(
+            ui::EventType::kMousePressed, center, center, ui::EventTimeForNow(),
+            ui::EF_LEFT_MOUSE_BUTTON, ui::EF_LEFT_MOUSE_BUTTON);
+        ui::MouseEvent drag_event(
+            ui::EventType::kMouseDragged, drag_location, drag_location,
+            ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+            ui::EF_LEFT_MOUSE_BUTTON);
+        ui::MouseEvent release_event(
+            ui::EventType::kMouseReleased, drag_location, drag_location,
+            ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+            ui::EF_LEFT_MOUSE_BUTTON);
+        mini_toolbar->OnMousePressed(press_event);
+        mini_toolbar->OnMouseDragged(drag_event);
+        mini_toolbar->OnMouseReleased(release_event);
+      }),
+      PollView(kMultiContentsViewSwapObserver, kMultiContentsViewElementId,
+               [&](const MultiContentsView* multi_contents_view) -> bool {
+                 bool first_web_contents_set =
+                     multi_contents_view->start_contents_view_for_testing()
+                         ->GetWebContents()
+                         ->GetVisibleURL() == GURL(chrome::kChromeUINewTabURL);
+                 bool second_web_contents_set =
+                     multi_contents_view->end_contents_view_for_testing()
+                         ->GetWebContents()
+                         ->GetVisibleURL() ==
+                     GURL(chrome::kChromeUISettingsURL);
+                 return first_web_contents_set && second_web_contents_set;
+               }),
+      WaitForState(kMultiContentsViewSwapObserver, true),
+      WaitForActiveTabChange(1), CheckActiveContentsHasFocus());
+}
+
+IN_PROC_BROWSER_TEST_F(MultiContentsViewUiTest,
+                       MiniToolbarDragLeftSwapsEndSplitView) {
+  using MultiContentsViewSwapObserver =
+      views::test::PollingViewObserver<bool, MultiContentsView>;
+  DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(MultiContentsViewSwapObserver,
+                                      kMultiContentsViewSwapObserver);
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsId);
+  RunTestSequence(
+      InstrumentTab(kWebContentsId),
+      NavigateWebContents(kWebContentsId, GURL(chrome::kChromeUINewTabURL)),
+      CreateTabsAndEnterSplitView(), Check([&]() {
+        return multi_contents_view()
+                   ->start_contents_view_for_testing()
+                   ->GetWebContents()
+                   ->GetVisibleURL() == GURL(chrome::kChromeUISettingsURL);
+      }),
+      Check([&]() {
+        return multi_contents_view()
+                   ->end_contents_view_for_testing()
+                   ->GetWebContents()
+                   ->GetVisibleURL() == GURL(chrome::kChromeUINewTabURL);
+      }),
+      CheckResult([this]() { return tab_strip_model()->active_index(); }, 0),
+      Do([&]() {
+        auto* mini_toolbar = multi_contents_view()->mini_toolbar_for_testing(1);
+        gfx::Point center(mini_toolbar->width() / 2, mini_toolbar->height() / 2);
+        gfx::Point drag_location(center.x() - 50, center.y());
+        ui::MouseEvent press_event(
+            ui::EventType::kMousePressed, center, center, ui::EventTimeForNow(),
+            ui::EF_LEFT_MOUSE_BUTTON, ui::EF_LEFT_MOUSE_BUTTON);
+        ui::MouseEvent drag_event(
+            ui::EventType::kMouseDragged, drag_location, drag_location,
+            ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+            ui::EF_LEFT_MOUSE_BUTTON);
+        ui::MouseEvent release_event(
+            ui::EventType::kMouseReleased, drag_location, drag_location,
+            ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+            ui::EF_LEFT_MOUSE_BUTTON);
+        mini_toolbar->OnMousePressed(press_event);
+        mini_toolbar->OnMouseDragged(drag_event);
+        mini_toolbar->OnMouseReleased(release_event);
+      }),
+      PollView(kMultiContentsViewSwapObserver, kMultiContentsViewElementId,
+               [&](const MultiContentsView* multi_contents_view) -> bool {
+                 bool first_web_contents_set =
+                     multi_contents_view->start_contents_view_for_testing()
+                         ->GetWebContents()
+                         ->GetVisibleURL() == GURL(chrome::kChromeUINewTabURL);
+                 bool second_web_contents_set =
+                     multi_contents_view->end_contents_view_for_testing()
+                         ->GetWebContents()
+                         ->GetVisibleURL() ==
+                     GURL(chrome::kChromeUISettingsURL);
+                 return first_web_contents_set && second_web_contents_set;
+               }),
+      WaitForState(kMultiContentsViewSwapObserver, true),
+      WaitForActiveTabChange(1), CheckActiveContentsHasFocus());
+}
+
+IN_PROC_BROWSER_TEST_F(MultiContentsViewUiTest,
                        ContentsDividersHiddenInSplitView) {
   RunTestSequence(
       // Open the bookmarks side panel.
@@ -879,6 +997,42 @@ IN_PROC_BROWSER_TEST_F(MultiContentsViewOutlineHighlightUiTest,
       FocusElement(kOmniboxElementId), EnterText(kOmniboxElementId, u"query"),
       CheckOutlineHighlightState(0, false),
       CheckOutlineHighlightState(1, true));
+}
+
+IN_PROC_BROWSER_TEST_F(MultiContentsViewOutlineHighlightUiTest,
+                       MiniToolbarDragHighlightsSwapTargetOutline) {
+  RunTestSequence(
+      CreateTabsAndEnterSplitView(), WaitForActiveTabChange(0),
+      CheckOutlineHighlightState(0, false), CheckOutlineHighlightState(1, false),
+      Do([&]() {
+        auto* mini_toolbar = multi_contents_view()->mini_toolbar_for_testing(0);
+        gfx::Point center(mini_toolbar->width() / 2, mini_toolbar->height() / 2);
+        gfx::Point drag_location(center.x() + 50, center.y());
+        ui::MouseEvent press_event(
+            ui::EventType::kMousePressed, center, center, ui::EventTimeForNow(),
+            ui::EF_LEFT_MOUSE_BUTTON, ui::EF_LEFT_MOUSE_BUTTON);
+        ui::MouseEvent drag_event(
+            ui::EventType::kMouseDragged, drag_location, drag_location,
+            ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+            ui::EF_LEFT_MOUSE_BUTTON);
+        mini_toolbar->OnMousePressed(press_event);
+        mini_toolbar->OnMouseDragged(drag_event);
+      }),
+      // Dragging the start mini-toolbar toward the end pane arms a swap on
+      // release, which should move the highlighted outline to the destination.
+      CheckOutlineHighlightState(0, false), CheckOutlineHighlightState(1, true),
+      Do([&]() {
+        auto* mini_toolbar = multi_contents_view()->mini_toolbar_for_testing(0);
+        gfx::Point center(mini_toolbar->width() / 2, mini_toolbar->height() / 2);
+        gfx::Point drag_location(center.x() + 50, center.y());
+        ui::MouseEvent release_event(
+            ui::EventType::kMouseReleased, drag_location, drag_location,
+            ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+            ui::EF_LEFT_MOUSE_BUTTON);
+        mini_toolbar->OnMouseReleased(release_event);
+      }),
+      // After the swap, the highlight should clear shortly.
+      CheckOutlineHighlightState(0, false), CheckOutlineHighlightState(1, false));
 }
 
 IN_PROC_BROWSER_TEST_F(MultiContentsViewOutlineHighlightUiTest,

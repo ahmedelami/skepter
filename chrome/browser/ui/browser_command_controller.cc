@@ -682,6 +682,9 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
                     split_tabs::SplitTabCreatedSource::kKeyboardShortcut);
       }
       break;
+    case IDC_ADD_SPLIT_PANE:
+      AddSplitPaneAndFocusLocationBar(browser_);
+      break;
     case IDC_NAME_WINDOW:
       PromptToNameWindow(browser_);
       break;
@@ -2405,6 +2408,8 @@ void BrowserCommandController::UpdateCommandsForTabStripStateChanged() {
   command_updater_.UpdateCommandEnabled(IDC_MOVE_TAB_TO_NEW_WINDOW,
                                         CanMoveActiveTabToNewWindow(browser_));
   command_updater_.UpdateCommandEnabled(IDC_NEW_SPLIT_TAB,
+                                        browser_->is_type_normal());
+  command_updater_.UpdateCommandEnabled(IDC_ADD_SPLIT_PANE,
                                         browser_->is_type_normal());
   UpdateCommandsForBookmarkEditing();
 }

@@ -86,6 +86,7 @@
 #define IDC_TOGGLE_VERTICAL_TABS        34056
 #define IDC_TOGGLE_VERTICAL_TABS_COLLAPSED 34057
 #define IDC_TOGGLE_VERTICAL_TABS_ZEN_HIDDEN 34058
+#define IDC_ADD_SPLIT_PANE              34059
 
 // Web app window commands
 #define IDC_COPY_URL                    34060

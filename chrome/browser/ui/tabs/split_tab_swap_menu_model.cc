@@ -48,14 +48,14 @@ std::u16string SplitTabSwapMenuModel::GetLabelForCommandId(
 
   if (id == CommandId::kSwapStartTab) {
     return l10n_util::GetStringUTF16(
-        GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-            ? IDS_SPLIT_TAB_SWAP_LEFT_VIEW
-            : IDS_SPLIT_TAB_SWAP_TOP_VIEW);
+        GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+            ? IDS_SPLIT_TAB_SWAP_TOP_VIEW
+            : IDS_SPLIT_TAB_SWAP_LEFT_VIEW);
   } else if (id == CommandId::kSwapEndTab) {
     return l10n_util::GetStringUTF16(
-        GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-            ? IDS_SPLIT_TAB_SWAP_RIGHT_VIEW
-            : IDS_SPLIT_TAB_SWAP_BOTTOM_VIEW);
+        GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+            ? IDS_SPLIT_TAB_SWAP_BOTTOM_VIEW
+            : IDS_SPLIT_TAB_SWAP_RIGHT_VIEW);
   } else {
     NOTREACHED() << "There are no other commands that are dynamic so this case "
                     "should not be reached.";
@@ -67,13 +67,13 @@ ui::ImageModel SplitTabSwapMenuModel::GetIconForCommandId(
   const CommandId id = static_cast<CommandId>(command_id);
   const gfx::VectorIcon* icon = nullptr;
   if (id == CommandId::kSwapStartTab) {
-    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-               ? &kSplitSceneLeftIcon
-               : &kSplitSceneUpIcon;
+    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+               ? &kSplitSceneUpIcon
+               : &kSplitSceneLeftIcon;
   } else if (id == CommandId::kSwapEndTab) {
-    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-               ? &kSplitSceneRightIcon
-               : &kSplitSceneDownIcon;
+    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+               ? &kSplitSceneDownIcon
+               : &kSplitSceneRightIcon;
   }
   CHECK(icon);
   return ui::ImageModel::FromVectorIcon(*icon, ui::kColorMenuIcon,
@@ -86,7 +86,9 @@ void SplitTabSwapMenuModel::ExecuteCommand(int command_id, int event_flags) {
   split_tabs::SplitTabData* const split_tab_data =
       tab_strip_model_->GetSplitData(split_id);
   std::vector<tabs::TabInterface*> tabs_in_split = split_tab_data->ListTabs();
-  CHECK_EQ(tabs_in_split.size(), 2U);
+  if (tabs_in_split.size() != 2U) {
+    return;
+  }
 
   if (id == CommandId::kSwapStartTab) {
     tab_strip_model_->UpdateTabInSplit(tabs_in_split[0], tab_index_,

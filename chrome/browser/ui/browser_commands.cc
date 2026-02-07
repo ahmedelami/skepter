@@ -1540,6 +1540,106 @@ void NewSplitTab(BrowserWindowInterface* browser,
                                  split_tabs::SplitTabVisualData(), source);
 }
 
+void AddSplitPaneAndFocusLocationBar(Browser* browser) {
+  if (!browser) {
+    return;
+  }
+
+  TabStripModel* const tab_strip_model = browser->tab_strip_model();
+  const int active_index = tab_strip_model->active_index();
+  if (active_index == TabStripModel::kNoTab) {
+    return;
+  }
+
+  tabs::TabInterface* const active_tab = tab_strip_model->GetActiveTab();
+  CHECK(active_tab);
+
+  if (!active_tab->IsSplit()) {
+    NewSplitTab(browser, split_tabs::SplitTabCreatedSource::kKeyboardShortcut);
+    FocusLocationBar(browser);
+    return;
+  }
+
+  const std::optional<split_tabs::SplitTabId> split_id =
+      active_tab->GetSplit();
+  if (!split_id.has_value()) {
+    FocusLocationBar(browser);
+    return;
+  }
+
+  split_tabs::SplitTabData* const split_data =
+      tab_strip_model->GetSplitData(split_id.value());
+  CHECK(split_data);
+
+  std::vector<tabs::TabInterface*> tabs_in_split = split_data->ListTabs();
+  if (tabs_in_split.size() < 2U || tabs_in_split.size() >= 4U) {
+    FocusLocationBar(browser);
+    return;
+  }
+
+  const auto active_it =
+      std::find(tabs_in_split.begin(), tabs_in_split.end(), active_tab);
+  CHECK(active_it != tabs_in_split.end());
+  const size_t active_pos = active_it - tabs_in_split.begin();
+
+  split_tabs::SplitTabVisualData new_visual_data = *split_data->visual_data();
+
+  size_t insertion_relative = 0;
+  split_tabs::SplitTabLayout new_layout = new_visual_data.split_layout();
+
+  if (tabs_in_split.size() == 2U) {
+    if (active_pos == 0U) {
+      insertion_relative = 1U;
+      new_layout = split_tabs::SplitTabLayout::kThreePaneStartStacked;
+    } else {
+      insertion_relative = 2U;
+      new_layout = split_tabs::SplitTabLayout::kThreePaneEndStacked;
+    }
+  } else {
+    if (new_layout == split_tabs::SplitTabLayout::kThreePaneEndStacked) {
+      insertion_relative = 1U;
+    } else {
+      insertion_relative = 3U;
+    }
+    new_layout = split_tabs::SplitTabLayout::kFourPaneGrid;
+  }
+
+  const int first_tab_index = split_data->GetIndexRange().start();
+  const int insert_index =
+      first_tab_index + static_cast<int>(insertion_relative);
+
+  // In Incognito mode, we can't show the regular Split View NTP so default to
+  // the regular NTP which renders special content when in Incognito.
+  const char* new_tab_url = browser->profile()->IsIncognitoProfile()
+                                ? chrome::kChromeUINewTabURL
+                                : chrome::kChromeUISplitViewNewTabPageURL;
+
+  const std::optional<tab_groups::TabGroupId> group = active_tab->GetGroup();
+  const bool pinned = active_tab->IsPinned();
+
+  tab_strip_model->RemoveSplit(split_id.value());
+  tab_strip_model->delegate()->AddTabAt(GURL(new_tab_url), insert_index,
+                                        /*foreground=*/false, group, pinned);
+
+  tabs::TabInterface* const new_tab = tab_strip_model->GetTabAtIndex(insert_index);
+  CHECK(new_tab);
+
+  new_visual_data.set_split_layout(new_layout);
+
+  std::vector<int> indices;
+  indices.reserve(tabs_in_split.size() + 1);
+  for (size_t i = 0; i < tabs_in_split.size() + 1; ++i) {
+    indices.push_back(first_tab_index + static_cast<int>(i));
+  }
+
+  tab_strip_model->RestoreSplit(split_id.value(), indices, new_visual_data);
+
+  const int new_tab_index = tab_strip_model->GetIndexOfTab(new_tab);
+  CHECK_NE(new_tab_index, TabStripModel::kNoTab);
+  tab_strip_model->ActivateTabAt(new_tab_index);
+  FocusLocationBar(browser);
+}
+
 void AddNewTabToGroup(Browser* browser) {
   if (!browser->tab_strip_model()->SupportsTabGroups()) {
     return;

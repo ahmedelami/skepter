@@ -51,22 +51,34 @@ SplitTabActiveLocation GetLastActiveTabLocation(
   split_tabs::SplitTabData* const split_tab_data =
       tab_strip_model->GetSplitData(split_id);
   std::vector<tabs::TabInterface*> tabs_in_split = split_tab_data->ListTabs();
-  CHECK_EQ(tabs_in_split.size(), 2U);
+  if (tabs_in_split.size() < 2U) {
+    return SplitTabActiveLocation::kStart;
+  }
 
   const int last_active_index =
       GetIndexOfLastActiveTab(tab_strip_model, split_id);
   CHECK_NE(last_active_index, TabStripModel::kNoTab);
 
   const int first_tab_index = tab_strip_model->GetIndexOfTab(tabs_in_split[0]);
-  const bool first_tab_activated = last_active_index == first_tab_index;
+  const int relative_last_active_index = last_active_index - first_tab_index;
 
-  if (split_tab_data->visual_data()->split_layout() ==
-      SplitTabLayout::kVertical) {
-    return first_tab_activated ? SplitTabActiveLocation::kStart
-                               : SplitTabActiveLocation::kEnd;
-  } else {
-    return first_tab_activated ? SplitTabActiveLocation::kTop
-                               : SplitTabActiveLocation::kBottom;
+  const SplitTabLayout layout = split_tab_data->visual_data()->split_layout();
+  switch (layout) {
+    case SplitTabLayout::kHorizontal:
+      return relative_last_active_index == 0 ? SplitTabActiveLocation::kTop
+                                             : SplitTabActiveLocation::kBottom;
+    case SplitTabLayout::kVertical:
+      return relative_last_active_index == 0 ? SplitTabActiveLocation::kStart
+                                             : SplitTabActiveLocation::kEnd;
+    case SplitTabLayout::kThreePaneStartStacked:
+      return relative_last_active_index <= 1 ? SplitTabActiveLocation::kStart
+                                             : SplitTabActiveLocation::kEnd;
+    case SplitTabLayout::kThreePaneEndStacked:
+      return relative_last_active_index == 0 ? SplitTabActiveLocation::kStart
+                                             : SplitTabActiveLocation::kEnd;
+    case SplitTabLayout::kFourPaneGrid:
+      return relative_last_active_index <= 1 ? SplitTabActiveLocation::kStart
+                                             : SplitTabActiveLocation::kEnd;
   }
 }
 }  // namespace split_tabs

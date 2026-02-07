@@ -157,14 +157,14 @@ std::u16string SplitTabMenuModel::GetLabelForCommandId(int command_id) const {
     return l10n_util::GetStringUTF16(IDS_SPLIT_TAB_REVERSE_VIEWS);
   } else if (id == CommandId::kCloseStartTab) {
     return l10n_util::GetStringUTF16(
-        GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-            ? IDS_SPLIT_TAB_CLOSE_LEFT_VIEW
-            : IDS_SPLIT_TAB_CLOSE_TOP_VIEW);
+        GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+            ? IDS_SPLIT_TAB_CLOSE_TOP_VIEW
+            : IDS_SPLIT_TAB_CLOSE_LEFT_VIEW);
   } else if (id == CommandId::kCloseEndTab) {
     return l10n_util::GetStringUTF16(
-        GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-            ? IDS_SPLIT_TAB_CLOSE_RIGHT_VIEW
-            : IDS_SPLIT_TAB_CLOSE_BOTTOM_VIEW);
+        GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+            ? IDS_SPLIT_TAB_CLOSE_BOTTOM_VIEW
+            : IDS_SPLIT_TAB_CLOSE_RIGHT_VIEW);
   } else {
     NOTREACHED() << "There are no other commands that are dynamic so this case "
                     "should not be reached.";
@@ -180,13 +180,13 @@ ui::ImageModel SplitTabMenuModel::GetIconForCommandId(int command_id) const {
   if (id == CommandId::kReversePosition) {
     icon = &GetReversePositionIcon(active_split_tab_location);
   } else if (id == CommandId::kCloseStartTab) {
-    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-               ? &kLeftPanelCloseIcon
-               : &kTopPanelCloseIcon;
+    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+               ? &kTopPanelCloseIcon
+               : &kLeftPanelCloseIcon;
   } else if (id == CommandId::kCloseEndTab) {
-    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kVertical
-               ? &kRightPanelCloseIcon
-               : &kBottomPanelCloseIcon;
+    icon = GetSplitLayout() == split_tabs::SplitTabLayout::kHorizontal
+               ? &kBottomPanelCloseIcon
+               : &kRightPanelCloseIcon;
   }
   CHECK(icon);
   return ui::ImageModel::FromVectorIcon(*icon, ui::kColorMenuIcon,
@@ -198,24 +198,35 @@ void SplitTabMenuModel::ExecuteCommand(int command_id, int event_flags) {
   split_tabs::SplitTabData* const split_tab_data =
       tab_strip_model_->GetSplitData(split_id);
   std::vector<tabs::TabInterface*> tabs_in_split = split_tab_data->ListTabs();
-  CHECK_EQ(tabs_in_split.size(), 2U);
   CommandId split_command_id = GetCommandIdEnum(command_id);
   switch (split_command_id) {
     case CommandId::kReversePosition:
-      tab_strip_model_->ReverseTabsInSplit(split_id);
+      if (tabs_in_split.size() == 2U) {
+        tab_strip_model_->ReverseTabsInSplit(split_id);
+      }
       break;
     case CommandId::kCloseSpecifiedTab:
       CloseTabAtIndex(split_tab_index_.value());
       break;
     case CommandId::kCloseStartTab: {
-      int startIndex = base::i18n::IsRTL() ? 1 : 0;
-      CloseTabAtIndex(
-          tab_strip_model_->GetIndexOfTab(tabs_in_split[startIndex]));
+      if (tabs_in_split.empty()) {
+        break;
+      }
+      const size_t start_index = (tabs_in_split.size() == 2U && base::i18n::IsRTL())
+                                     ? 1U
+                                     : 0U;
+      CloseTabAtIndex(tab_strip_model_->GetIndexOfTab(tabs_in_split[start_index]));
       break;
     }
     case CommandId::kCloseEndTab: {
-      int endIndex = base::i18n::IsRTL() ? 0 : 1;
-      CloseTabAtIndex(tab_strip_model_->GetIndexOfTab(tabs_in_split[endIndex]));
+      if (tabs_in_split.empty()) {
+        break;
+      }
+      const size_t end_index =
+          (tabs_in_split.size() == 2U && base::i18n::IsRTL())
+              ? 0U
+              : tabs_in_split.size() - 1;
+      CloseTabAtIndex(tab_strip_model_->GetIndexOfTab(tabs_in_split[end_index]));
       break;
     }
     case CommandId::kExitSplit:

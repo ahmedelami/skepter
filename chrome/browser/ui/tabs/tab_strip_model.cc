@@ -2003,7 +2003,13 @@ void TabStripModel::UpdateTabInSplit(tabs::TabInterface* split_tab,
 void TabStripModel::ReverseTabsInSplit(split_tabs::SplitTabId split_id) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
 
-  tabs::TabInterface* first_tab = GetSplitData(split_id)->ListTabs()[0];
+  std::vector<tabs::TabInterface*> tabs_in_split =
+      GetSplitData(split_id)->ListTabs();
+  if (tabs_in_split.size() != 2U) {
+    return;
+  }
+
+  tabs::TabInterface* first_tab = tabs_in_split[0];
   const int index_of_first_tab_in_split = GetIndexOfTab(first_tab);
   MoveTabToIndexImpl(index_of_first_tab_in_split,
                      index_of_first_tab_in_split + 1, first_tab->GetGroup(),
@@ -2042,7 +2048,7 @@ void TabStripModel::RestoreSplit(split_tabs::SplitTabId split_id,
                                  split_tabs::SplitTabVisualData visual_data) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
   CHECK(std::ranges::is_sorted(indices));
-  CHECK_EQ(indices.size(), 2u);
+  CHECK_GE(indices.size(), 2u);
 
   // Ideally these are consecutive indices from the restore flow and the pivot
   // index does not matter. However, given there are numerous steps in restore

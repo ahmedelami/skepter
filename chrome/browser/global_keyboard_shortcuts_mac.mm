@@ -176,6 +176,7 @@ const std::vector<KeyboardShortcutData>& GetShortcutsNotPresentInMainMenu() {
     }
 
     keys.push_back({true, false, false, true, kVK_ANSI_N, IDC_NEW_SPLIT_TAB});
+    keys.push_back({true, false, true, false, kVK_ANSI_L, IDC_ADD_SPLIT_PANE});
 
     return keys;
   }());

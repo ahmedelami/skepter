@@ -24,8 +24,13 @@ void RecordSplitTabCreated(SplitTabCreatedSource source) {
 void LogSplitViewCreatedUKM(const TabStripModel* tab_strip_model,
                             const SplitTabId split_id) {
   SplitTabData* split_data = tab_strip_model->GetSplitData(split_id);
+  if (!split_data || !split_data->visual_data()) {
+    return;
+  }
   std::vector<tabs::TabInterface*> split_tabs = split_data->ListTabs();
-  CHECK(split_tabs.size() == 2);
+  if (split_tabs.size() < 2) {
+    return;
+  }
 
   int64_t split_event_id = base::RandUint64();
 
@@ -42,8 +47,13 @@ void LogSplitViewCreatedUKM(const TabStripModel* tab_strip_model,
 void LogSplitViewUpdatedUKM(const TabStripModel* tab_strip_model,
                             const SplitTabId split_id) {
   SplitTabData* split_data = tab_strip_model->GetSplitData(split_id);
+  if (!split_data || !split_data->visual_data()) {
+    return;
+  }
   std::vector<tabs::TabInterface*> split_tabs = split_data->ListTabs();
-  CHECK(split_tabs.size() == 2);
+  if (split_tabs.size() < 2) {
+    return;
+  }
 
   int64_t split_event_id = base::RandUint64();
 
