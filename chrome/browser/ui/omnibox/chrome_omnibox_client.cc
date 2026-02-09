@@ -702,6 +702,31 @@ void ChromeOmniboxClient::OnTextChanged(const AutocompleteMatch& current_match,
         user_text, current_match, web_contents);
   }
 
+  // Skepter: start preconnect + prerender as early as possible for strong
+  // navigational intent, even when the action predictor doesn't reach its
+  // confidence threshold yet. The key case is inline autocompletion (blue
+  // suggestion) where the user often accepts quickly (e.g. Tab) after typing
+  // only a couple characters.
+  const bool strong_intent =
+      user_input_in_progress && has_focus &&
+      current_match.allowed_to_be_default_match &&
+      !current_match.inline_autocompletion.empty() &&
+      current_match.destination_url.is_valid() &&
+      current_match.destination_url.SchemeIsHTTPOrHTTPS() &&
+      !AutocompleteMatch::IsSearchType(current_match.type) &&
+      current_match.destination_url != GetURL();
+  if (strong_intent &&
+      recommended_action == AutocompleteActionPredictor::ACTION_NONE) {
+    DoPreconnect(current_match);
+  }
+  if (recommended_action != AutocompleteActionPredictor::ACTION_PRERENDER) {
+    MaybeScheduleStrongIntentPrerender(current_match, user_input_in_progress,
+                                       has_focus);
+  } else {
+    strong_intent_prerender_timer_.Stop();
+    pending_strong_intent_prerender_url_ = GURL();
+  }
+
   switch (recommended_action) {
     case AutocompleteActionPredictor::ACTION_PRERENDER:
       // It's possible that there is no current page, for instance if the tab
@@ -887,6 +912,11 @@ void ChromeOmniboxClient::OnAutocompleteAccept(
 }
 
 void ChromeOmniboxClient::OnInputInProgress(bool in_progress) {
+  if (!in_progress) {
+    strong_intent_prerender_timer_.Stop();
+    pending_strong_intent_prerender_url_ = GURL();
+  }
+
   location_bar_->UpdateWithoutTabRestore();
   content::WebContents* const web_contents = location_bar_->GetWebContents();
   if (web_contents) {
@@ -1021,8 +1051,7 @@ void ChromeOmniboxClient::DoPreconnect(const AutocompleteMatch& match) {
   auto* loading_predictor =
       predictors::LoadingPredictorFactory::GetForProfile(profile_);
   if (loading_predictor) {
-    bool is_preconnectable =
-        predictors::AutocompleteActionPredictor::IsPreconnectable(match);
+    const bool is_preconnectable = match.destination_url.SchemeIsHTTPOrHTTPS();
     loading_predictor->PrepareForPageLoad(
         /*initiator_origin=*/std::nullopt, match.destination_url,
         predictors::HintOrigin::OMNIBOX, is_preconnectable);
@@ -1036,6 +1065,70 @@ void ChromeOmniboxClient::DoPreconnect(const AutocompleteMatch& match) {
   // We could prefetch the alternate nav URL, if any, but because there
   // can be many of these as a user types an initial series of characters,
   // the OS DNS cache could suffer eviction problems for minimal gain.
+}
+
+void ChromeOmniboxClient::MaybeScheduleStrongIntentPrerender(
+    const AutocompleteMatch& match,
+    bool user_input_in_progress,
+    bool has_focus) {
+  if (!user_input_in_progress || !has_focus) {
+    strong_intent_prerender_timer_.Stop();
+    pending_strong_intent_prerender_url_ = GURL();
+    return;
+  }
+
+  const bool strong_intent =
+      match.allowed_to_be_default_match && !match.inline_autocompletion.empty() &&
+      match.destination_url.is_valid() && match.destination_url.SchemeIsHTTPOrHTTPS() &&
+      !AutocompleteMatch::IsSearchType(match.type) &&
+      match.destination_url != GetURL();
+  if (!strong_intent) {
+    strong_intent_prerender_timer_.Stop();
+    pending_strong_intent_prerender_url_ = GURL();
+    return;
+  }
+
+  // If the match hasn't changed, keep the existing timer running.
+  if (pending_strong_intent_prerender_url_ == match.destination_url &&
+      strong_intent_prerender_timer_.IsRunning()) {
+    return;
+  }
+
+  pending_strong_intent_prerender_url_ = match.destination_url;
+  strong_intent_prerender_timer_.Start(
+      FROM_HERE, base::Milliseconds(50),
+      base::BindOnce(&ChromeOmniboxClient::StartStrongIntentPrerender,
+                     weak_factory_.GetWeakPtr()));
+}
+
+void ChromeOmniboxClient::StartStrongIntentPrerender() {
+  if (!CurrentPageExists()) {
+    pending_strong_intent_prerender_url_ = GURL();
+    return;
+  }
+
+  content::WebContents* web_contents = location_bar_->GetWebContents();
+  if (!web_contents) {
+    pending_strong_intent_prerender_url_ = GURL();
+    return;
+  }
+
+  if (pending_strong_intent_prerender_url_.is_empty() ||
+      !pending_strong_intent_prerender_url_.SchemeIsHTTPOrHTTPS() ||
+      pending_strong_intent_prerender_url_ == GetURL()) {
+    pending_strong_intent_prerender_url_ = GURL();
+    return;
+  }
+
+  // Don't prerender when DevTools is open in this tab.
+  if (content::DevToolsAgentHost::IsDebuggerAttached(web_contents)) {
+    pending_strong_intent_prerender_url_ = GURL();
+    return;
+  }
+
+  predictors::AutocompleteActionPredictorFactory::GetForProfile(profile_)
+      ->StartPrerendering(pending_strong_intent_prerender_url_, *web_contents);
+  pending_strong_intent_prerender_url_ = GURL();
 }
 
 // static

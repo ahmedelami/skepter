@@ -11,15 +11,16 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_service.h"
 #include "chrome/common/search/instant_types.h"
 #include "components/omnibox/browser/favicon_cache.h"
 #include "components/omnibox/browser/omnibox.mojom-shared.h"
 #include "components/omnibox/browser/omnibox_client.h"
+#include "url/gurl.h"
 
 class Browser;
 class ChromeAutocompleteSchemeClassifier;
-class GURL;
 class LocationBar;
 class Profile;
 
@@ -148,6 +149,11 @@ class ChromeOmniboxClient final : public OmniboxClient {
   // Performs preconnection for |match|.
   void DoPreconnect(const AutocompleteMatch& match);
 
+  void MaybeScheduleStrongIntentPrerender(const AutocompleteMatch& match,
+                                         bool user_input_in_progress,
+                                         bool has_focus);
+  void StartStrongIntentPrerender();
+
   // Implemented by `LocationBarView` which owns `OmniboxView` which owns this.
   const raw_ptr<LocationBar> location_bar_;
   const raw_ptr<Browser, DanglingUntriaged> browser_;
@@ -155,6 +161,9 @@ class ChromeOmniboxClient final : public OmniboxClient {
   std::unique_ptr<ChromeAutocompleteSchemeClassifier> scheme_classifier_;
   std::vector<BitmapFetcherService::RequestId> request_ids_;
   FaviconCache favicon_cache_;
+
+  base::OneShotTimer strong_intent_prerender_timer_;
+  GURL pending_strong_intent_prerender_url_;
 
   base::WeakPtrFactory<ChromeOmniboxClient> weak_factory_{this};
 };

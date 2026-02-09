@@ -3,6 +3,9 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/navigation_predictor/anchor_element_preloader.h"
+
+#include <optional>
+
 #include "base/functional/callback.h"
 #include "base/metrics/histogram_functions.h"
 #include "chrome/browser/predictors/loading_predictor.h"
@@ -18,6 +21,7 @@
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "third_party/blink/public/common/features.h"
 #include "ui/base/page_transition_types.h"
+#include "url/origin.h"
 #include "url/scheme_host_port.h"
 
 namespace {
@@ -112,9 +116,10 @@ void AnchorElementPreloader::MaybePreconnect(const GURL& target) {
   attempt->SetTriggeringOutcome(
       content::PreloadingTriggeringOutcome::kTriggeredButOutcomeUnknown);
 
-  net::SchemefulSite schemeful_site(target);
-  auto network_anonymization_key =
-      net::NetworkAnonymizationKey::CreateSameSite(schemeful_site);
-  loading_predictor->PreconnectURLIfAllowed(target, /*allow_credentials=*/true,
-                                            network_anonymization_key);
+  std::optional<url::Origin> initiator_origin =
+      render_frame_host_->GetLastCommittedOrigin();
+  loading_predictor->PrepareForPageLoad(initiator_origin, target,
+                                        predictors::HintOrigin::
+                                            NAVIGATION_PREDICTOR,
+                                        /*preconnectable=*/true);
 }

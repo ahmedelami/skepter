@@ -312,7 +312,7 @@ void PreloadingDecider::OnPointerHover(
 
   // Preconnecting on hover events should not be done if the link is not safe
   // to prefetch or prerender.
-  constexpr bool fallback_to_preconnect = false;
+  constexpr bool fallback_to_preconnect = true;
   // Filter `kModerate` for the "eager" mouse hover to prevent false preloading.
   EagernessSet eagerness_to_exclude;
   if (base::FeatureList::IsEnabled(

@@ -27,7 +27,6 @@ bool IsOutermostMainFrame(const RenderFrameHost& render_frame_host) {
 void MaybePrewarmHttpDiskCache(const GURL& url,
                                RenderFrameHost& render_frame_host) {
   static const bool enabled =
-      base::FeatureList::IsEnabled(blink::features::kHttpDiskCachePrewarming) &&
       blink::features::kHttpDiskCachePrewarmingTriggerOnPointerDownOrHover
           .Get();
 
@@ -153,6 +152,8 @@ void AnchorElementInteractionHostImpl::OnPointerHoverEager(
       PreloadingDecider::GetOrCreateForCurrentDocument(&render_frame_host());
   preloading_decider->OnPointerHover(
       url, std::move(mouse_data), blink::mojom::SpeculationEagerness::kEager);
+  MaybePrewarmHttpDiskCache(url, render_frame_host());
+  MaybeWarmUpServiceWorkerOnPointerHover(url, render_frame_host());
 }
 
 void AnchorElementInteractionHostImpl::OnPointerHoverModerate(

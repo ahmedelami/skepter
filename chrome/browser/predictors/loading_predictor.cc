@@ -512,11 +512,6 @@ void LoadingPredictor::PreconnectURLIfAllowed(
 void LoadingPredictor::MaybePrewarmResources(
     const std::optional<url::Origin>& initiator_origin,
     const GURL& top_frame_main_resource_url) {
-  if (!base::FeatureList::IsEnabled(
-          blink::features::kHttpDiskCachePrewarming)) {
-    return;
-  }
-
   if (shutdown_) {
     return;
   }

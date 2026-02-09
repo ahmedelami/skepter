@@ -9,14 +9,6 @@
 
 namespace features {
 
-namespace {
-
-constexpr base::FeatureState kFeatureEnabledOnlyOnAndroid =
-    BUILDFLAG(IS_ANDROID) ? base::FEATURE_ENABLED_BY_DEFAULT
-                          : base::FEATURE_DISABLED_BY_DEFAULT;
-
-}  // namespace
-
 // Whether local predictions should be used to make preconnect predictions.
 BASE_FEATURE(kLoadingPredictorUseLocalPredictions,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -45,7 +37,7 @@ BASE_FEATURE(kLoadingPredictorUseOptimizationGuide,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 constexpr base::FeatureState kLoadingPredictorPrefetchDefaultFeatureState =
-    kFeatureEnabledOnlyOnAndroid;
+    base::FEATURE_ENABLED_BY_DEFAULT;
 
 // Modifies loading predictor so that it does prefetches of subresources instead
 // of preconnects.
