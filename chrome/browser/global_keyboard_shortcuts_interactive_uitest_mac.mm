@@ -126,9 +126,9 @@ IN_PROC_BROWSER_TEST_F(GlobalKeyboardShortcutsTest, CopyPasteOmnibox) {
   NSWindow* ns_window =
       browser()->window()->GetNativeWindow().GetNativeNSWindow();
 
-  // Cmd+L focuses the omnibox and selects all the text.
+  // Ctrl+L focuses the omnibox and selects all the text.
   SendEvent(SynthesizeKeyEvent(ns_window, /*keydown=*/true, ui::VKEY_L,
-                               NSEventModifierFlagCommand));
+                               NSEventModifierFlagControl));
 
   // The first typed letter overrides the existing contents.
   SendEvent(SynthesizeKeyEvent(ns_window, /*keydown=*/true, ui::VKEY_A,

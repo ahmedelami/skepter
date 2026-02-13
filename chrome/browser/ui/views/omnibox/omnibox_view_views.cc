@@ -305,7 +305,7 @@ OmniboxViewViews::OmniboxViewViews(bool popup_window_mode,
   GetViewAccessibility().AddHTMLAttributes(std::make_pair("type", "url"));
   // Expose keyboard shortcut where it makes sense.
 #if BUILDFLAG(IS_MAC)
-  GetViewAccessibility().SetKeyShortcuts("⌘L");
+  GetViewAccessibility().SetKeyShortcuts("⌃L");
 #else
   GetViewAccessibility().SetKeyShortcuts("Ctrl+L");
 #endif

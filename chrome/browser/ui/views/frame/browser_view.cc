@@ -3751,11 +3751,11 @@ content::KeyboardEventProcessingResult BrowserView::PreHandleKeyboardEvent(
   if (event.GetType() == blink::WebInputEvent::Type::kRawKeyDown &&
       multi_contents_view_ && multi_contents_view_->IsInSplitView()) {
     const int modifiers = accelerator.modifiers();
-    const bool only_control =
-        (modifiers & ui::EF_CONTROL_DOWN) &&
+    const bool only_command =
+        (modifiers & ui::EF_COMMAND_DOWN) &&
         !(modifiers &
-          (ui::EF_COMMAND_DOWN | ui::EF_ALT_DOWN | ui::EF_SHIFT_DOWN));
-    if (only_control) {
+          (ui::EF_CONTROL_DOWN | ui::EF_ALT_DOWN | ui::EF_SHIFT_DOWN));
+    if (only_command) {
       enum class SplitFocusDirection { kLeft, kRight, kUp, kDown };
       const auto direction = [&]() -> std::optional<SplitFocusDirection> {
         switch (accelerator.key_code()) {
@@ -3876,8 +3876,8 @@ content::KeyboardEventProcessingResult BrowserView::PreHandleKeyboardEvent(
           }
         }
 
-        // Always consume Ctrl+H/J/K/L in split view so web content doesn't
-        // receive control characters (and to keep Vim-style behavior).
+        // Always consume Cmd+H/J/K/L in split view so web content doesn't
+        // receive these key equivalents (and to keep Vim-style behavior).
         return content::KeyboardEventProcessingResult::HANDLED;
       }
     }
